@@ -18,11 +18,12 @@
     </div>
     <!-- 프로토타입(IndexedDB) 모드 -->
     <div id="loginLocal">
-      <label class="f"><span>이메일</span><input type="email" name="email" value="admin@wellbi.co.kr" autocomplete="username"></label>
+      <label class="f"><span>회사 이메일</span><input type="email" name="email" value="admin@wellbi.co.kr" autocomplete="username"></label>
       <label class="f"><span>비밀번호</span><input type="password" name="pw" value="admin1234" autocomplete="current-password"></label>
       <div class="login-err" id="loginErr"></div>
       <button class="btn primary block" type="submit">로그인</button>
-      <p class="login-hint">프로토타입 기본 계정: admin@wellbi.co.kr / admin1234<br>config.js 에 Google 설정을 넣으면 Google 로그인으로 바뀝니다.</p>
+      <button class="btn ghost block" type="button" id="showRegister">구성원 가입 신청</button>
+      <p class="login-hint">프로토타입 기본 관리자: admin@wellbi.co.kr / admin1234<br>구성원은 가입 신청 후 관리자 승인을 받아야 로그인할 수 있습니다.</p>
     </div>
     <!-- Google Drive 모드 -->
     <div id="loginDrive" hidden>
@@ -35,6 +36,25 @@
     </div>
     <a class="login-back" href="index.html">← 아카이브로 돌아가기</a>
   </form>
+
+  <!-- 구성원 가입 신청 (프로토타입 모드) -->
+  <form class="login-card" id="registerForm" hidden>
+    <div class="brand" style="margin-bottom:20px">
+      <span class="brand-mark">W</span>
+      <span class="brand-text"><strong>WELLBI Archive</strong><small>구성원 가입 신청</small></span>
+    </div>
+    <div class="row c2">
+      <label class="f"><span>이름 *</span><input name="name" required placeholder="홍길동"></label>
+      <label class="f"><span>소속</span><input name="dept" placeholder="기획1팀"></label>
+      <label class="f"><span>직책</span><input name="position" placeholder="대리"></label>
+      <label class="f"><span>회사 이메일 *</span><input type="email" name="email" required placeholder="name@wellbi.kr" autocomplete="username"></label>
+      <label class="f" style="grid-column:1/-1"><span>비밀번호 * <span class="hint">(6자 이상)</span></span><input type="password" name="pw" required minlength="6" autocomplete="new-password"></label>
+    </div>
+    <div class="login-err" id="registerErr"></div>
+    <button class="btn primary block" type="submit">가입 신청</button>
+    <button class="btn ghost block" type="button" id="showLogin">← 로그인으로</button>
+    <p class="login-hint">신청 후 관리자(허빈)가 승인하면 로그인할 수 있습니다.</p>
+  </form>
 </section>
 
 <!-- ================= 관리자 셸 ================= -->
@@ -46,9 +66,10 @@
     </a>
 
     <nav class="side-nav">
+      <a href="#/dashboard" data-nav="dashboard" data-admin-only>📊 진행 현황 <span class="nav-badge" id="dashBadge" hidden></span></a>
       <a href="#/projects" data-nav="projects">📁 프로젝트 관리</a>
       <a href="#/new" data-nav="new">＋ 새 프로젝트</a>
-      <a href="#/users" data-nav="users" data-admin-only>👥 구성원 관리</a>
+      <a href="#/users" data-nav="users" data-admin-only>👥 구성원 관리 <span class="nav-badge" id="usersBadge" hidden></span></a>
       <a href="#/settings" data-nav="settings">⚙ 설정 · 백업</a>
     </nav>
 

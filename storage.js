@@ -116,7 +116,7 @@ const LocalStore = (() => {
     const seeded = await get("meta", "seeded");
     if (!seeded) {
       if (typeof PROJECTS !== "undefined") for (const p of PROJECTS) await put("projects", p);
-      await put("users", { email: "admin@wellbi.co.kr", pw: "admin1234", name: "관리자", role: "admin", createdAt: Date.now() });
+      await put("users", { email: "admin@wellbi.co.kr", pw: "admin1234", name: "허빈", dept: "경영지원", position: "대표", role: "admin", status: "approved", createdAt: Date.now() });
       await put("meta", { key: "seeded", value: true });
     }
   }
@@ -180,13 +180,26 @@ const LocalStore = (() => {
   }
 
   const SESSION_KEY = "wellbi-admin-session";
+  const toSession = (u) => ({ email: u.email, name: u.name, dept: u.dept || "", position: u.position || "", role: u.role });
   const auth = {
+    // 승인제: status 가 approved 인 계정만 로그인 가능
     async login(email, pw) {
       const u = await get("users", email.trim().toLowerCase());
       if (!u || u.pw !== pw) throw new Error("이메일 또는 비밀번호가 올바르지 않습니다.");
-      const s = { email: u.email, name: u.name, role: u.role };
+      const status = u.status || "approved"; // 구버전 데이터 호환
+      if (status === "pending") throw new Error("가입 신청이 아직 승인되지 않았습니다. 관리자(허빈) 승인 후 로그인할 수 있습니다.");
+      if (status === "rejected") throw new Error("가입 신청이 거절되었습니다. 관리자에게 문의하세요.");
+      const s = toSession(u);
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
       return s;
+    },
+    // 구성원 가입 신청 → pending 상태로 저장, 관리자 승인 대기
+    async register({ email, pw, name, dept, position }) {
+      email = email.trim().toLowerCase();
+      if (!email || !pw || !name) throw new Error("이메일 · 비밀번호 · 이름은 필수입니다.");
+      if (pw.length < 6) throw new Error("비밀번호는 6자 이상이어야 합니다.");
+      if (await get("users", email)) throw new Error("이미 등록되었거나 신청 중인 이메일입니다.");
+      await put("users", { email, pw, name: name.trim(), dept: (dept || "").trim(), position: (position || "").trim(), role: "editor", status: "pending", createdAt: Date.now() });
     },
     logout() {
       sessionStorage.removeItem(SESSION_KEY);
@@ -199,12 +212,12 @@ const LocalStore = (() => {
       }
     },
     async listUsers() {
-      return (await getAll("users")).map(({ pw, ...u }) => u);
+      return (await getAll("users")).map(({ pw, ...u }) => ({ ...u, status: u.status || "approved" }));
     },
-    async addUser({ email, pw, name, role = "editor" }) {
+    async addUser({ email, pw, name, dept = "", position = "", role = "editor" }) {
       email = email.trim().toLowerCase();
       if (await get("users", email)) throw new Error("이미 등록된 이메일입니다.");
-      await put("users", { email, pw, name, role, createdAt: Date.now() });
+      await put("users", { email, pw, name, dept, position, role, status: "approved", createdAt: Date.now() });
     },
     async updateUser(email, patch) {
       const u = await get("users", email);
@@ -225,8 +238,14 @@ const LocalStore = (() => {
     for (const p of list) await put("projects", p);
     return list.length;
   }
+  // 프로토타입 전용: data.js 샘플을 다시 불러옴 (업로드 파일·구성원은 유지, 샘플 id 와 같은 프로젝트만 덮어씀)
+  async function reseedSamples() {
+    if (typeof PROJECTS === "undefined") return 0;
+    for (const p of PROJECTS) await put("projects", p);
+    return PROJECTS.length;
+  }
 
-  return { mode: "local", init, getProjects, saveProject, deleteProject, uploadFile, resolveUrl, removeFileIfLocal, storageUsage, auth, exportJSON, importJSON, slugify, fmtBytes };
+  return { mode: "local", init, getProjects, saveProject, deleteProject, uploadFile, resolveUrl, removeFileIfLocal, storageUsage, auth, exportJSON, importJSON, reseedSamples, slugify, fmtBytes };
 })();
 
 /* =====================================================================
@@ -582,13 +601,24 @@ const DriveStore = (() => {
           sessionStorage.removeItem(TOKEN_KEY);
           throw new Error(`${email} 은(는) 접근 권한이 없습니다. 관리자에게 구성원 등록을 요청하세요.`);
         }
-        me = { email, name: info.name || email.split("@")[0], role: isBootstrap || members.length === 0 ? "admin" : "editor", createdAt: Date.now(), picture: info.picture || "" };
+        // 승인제: 최초 관리자(또는 첫 사용자)만 즉시 승인, 나머지 회사 도메인 계정은 승인 대기
+        const isAdmin = isBootstrap || members.length === 0;
+        me = { email, name: info.name || email.split("@")[0], dept: "", position: "", role: isAdmin ? "admin" : "editor", status: isAdmin ? "approved" : "pending", createdAt: Date.now(), picture: info.picture || "" };
         members = [...members, me];
         await saveMembers(members);
       }
-      const s = { email: me.email, name: me.name, role: me.role, picture: info.picture || me.picture || "" };
+      const status = me.status || "approved";
+      if (status !== "approved") {
+        sessionStorage.removeItem(TOKEN_KEY);
+        throw new Error(status === "pending" ? "가입 신청이 접수되었습니다. 관리자(허빈) 승인 후 로그인할 수 있습니다." : "가입 신청이 거절되었습니다. 관리자에게 문의하세요.");
+      }
+      const s = { email: me.email, name: me.name, dept: me.dept || "", position: me.position || "", role: me.role, picture: info.picture || me.picture || "" };
       sessionStorage.setItem(USER_KEY, JSON.stringify(s));
       return s;
+    },
+    // Drive 모드는 Google 로그인이 곧 신청 → 별도 register 없음 (호환용)
+    async register() {
+      throw new Error("Google 계정으로 로그인하면 자동으로 가입 신청됩니다.");
     },
     logout() {
       const t = getToken();
@@ -607,13 +637,13 @@ const DriveStore = (() => {
       }
     },
     async listUsers() {
-      return [...(await loadMembers({ force: true }))];
+      return (await loadMembers({ force: true })).map((m) => ({ ...m, status: m.status || "approved" }));
     },
-    async addUser({ email, name, role = "editor" }) {
+    async addUser({ email, name, dept = "", position = "", role = "editor" }) {
       email = email.trim().toLowerCase();
       const members = await loadMembers({ force: true });
       if (members.some((m) => m.email === email)) throw new Error("이미 등록된 이메일입니다.");
-      await saveMembers([...members, { email, name: name || email.split("@")[0], role, createdAt: Date.now() }]);
+      await saveMembers([...members, { email, name: name || email.split("@")[0], dept, position, role, status: "approved", createdAt: Date.now() }]);
     },
     async updateUser(email, patch) {
       const members = await loadMembers({ force: true });

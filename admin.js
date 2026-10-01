@@ -1,10 +1,11 @@
 /* =====================================================================
    WELLBI Archive - Admin Console
    ---------------------------------------------------------------------
+   #/dashboard       진행 현황 대시보드 (admin 전용) — 프로젝트별 카테고리 업로드 진행률
    #/projects        프로젝트 목록
    #/new             새 프로젝트
-   #/edit/<id>       프로젝트 편집 (정보 + 자료 업로드)
-   #/users           구성원 관리 (admin 전용)
+   #/edit/<id>       프로젝트 편집 (정보 + 자료 업로드 + 현황기록)
+   #/users           구성원 관리 (admin 전용) — 가입 신청 승인/거절
    #/settings        설정 · 백업
    ===================================================================== */
 
@@ -44,22 +45,81 @@ const DRIVE = Store.mode === "drive";
 function showLogin() {
   $("#loginView").hidden = false;
   $("#adminView").hidden = true;
+  $("#loginForm").hidden = false;
+  $("#registerForm").hidden = true;
   $("#loginLocal").hidden = DRIVE;
   $("#loginDrive").hidden = !DRIVE;
   if (DRIVE) $("#allowedDomain").textContent = CONFIG.ALLOWED_DOMAIN ? "@" + CONFIG.ALLOWED_DOMAIN : "등록된 이메일";
 }
 function afterLogin() {
   showAdmin();
-  if (!location.hash || location.hash === "#/") location.hash = "#/projects";
+  const home = me.role === "admin" ? "#/dashboard" : "#/projects";
+  if (!location.hash || location.hash === "#/") location.hash = home;
   else route();
 }
 function showAdmin() {
   $("#loginView").hidden = true;
   $("#adminView").hidden = false;
   $("#meName").textContent = me.name;
-  $("#meRole").textContent = me.role === "admin" ? "관리자 · " + me.email : "구성원 · " + me.email;
+  const who = [me.dept, me.position].filter(Boolean).join(" · ");
+  $("#meRole").textContent = (me.role === "admin" ? "관리자" : "구성원") + (who ? " · " + who : "") + " · " + me.email;
   $$("[data-admin-only]").forEach((el) => (el.hidden = me.role !== "admin"));
+  refreshBadges();
 }
+
+// 사이드바 배지: 승인 대기 구성원 수, 진행률 50% 미만 프로젝트 수
+async function refreshBadges() {
+  if (me?.role !== "admin") return;
+  try {
+    const pending = (await Store.auth.listUsers()).filter((u) => u.status === "pending").length;
+    const ub = $("#usersBadge");
+    ub.textContent = pending;
+    ub.hidden = !pending;
+    const low = (await Store.getProjects()).filter((p) => progressOf(p).pct < 50).length;
+    const db = $("#dashBadge");
+    db.textContent = low;
+    db.hidden = !low;
+  } catch {}
+}
+
+/* ---------- 진행률 계산 (대시보드 · 목록 공용) ---------- */
+function progressOf(p) {
+  const assets = p.assets || [];
+  const per = {};
+  CATEGORIES.forEach((c) => (per[c.id] = assets.filter((a) => a.section === c.id).length));
+  const done = REQUIRED_CATEGORIES.filter((k) => per[k] > 0).length;
+  const pct = Math.round((done / REQUIRED_CATEGORIES.length) * 100);
+  const missing = REQUIRED_CATEGORIES.filter((k) => !per[k]);
+  const logs = assets.filter((a) => a.section === "log");
+  const lastUpload = assets.reduce((m, a) => Math.max(m, a.uploadedAt || a.createdAt || 0), 0);
+  return { per, done, total: REQUIRED_CATEGORIES.length, pct, missing, logs, lastUpload, hasThumb: !!p.thumbnail };
+}
+const pctClass = (pct) => (pct >= 100 ? "full" : pct >= 50 ? "mid" : "low");
+
+$("#showRegister")?.addEventListener("click", () => {
+  $("#loginForm").hidden = true;
+  $("#registerForm").hidden = false;
+  $("#registerErr").textContent = "";
+});
+$("#showLogin")?.addEventListener("click", () => {
+  $("#registerForm").hidden = true;
+  $("#loginForm").hidden = false;
+});
+$("#registerForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  try {
+    await Store.auth.register({ name: fd.get("name"), dept: fd.get("dept"), position: fd.get("position"), email: fd.get("email"), pw: fd.get("pw") });
+    e.target.reset();
+    $("#registerForm").hidden = true;
+    $("#loginForm").hidden = false;
+    $("#loginErr").style.color = "#4ade80";
+    $("#loginErr").textContent = "가입 신청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다.";
+    setTimeout(() => ($("#loginErr").style.color = ""), 6000);
+  } catch (err) {
+    $("#registerErr").textContent = err.message;
+  }
+});
 
 $("#loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -92,6 +152,138 @@ $("#logoutBtn").addEventListener("click", () => {
 });
 
 /* =====================================================================
+   진행 현황 대시보드 (관리감독)
+   ===================================================================== */
+async function viewDashboard() {
+  if (me.role !== "admin") {
+    content.innerHTML = `<div class="empty-sm">관리자만 접근할 수 있습니다.</div>`;
+    return;
+  }
+  const list = await Store.getProjects();
+  const users = await Store.auth.listUsers();
+  const pending = users.filter((u) => u.status === "pending");
+  const rows = list.map((p) => ({ p, pr: progressOf(p) }));
+  const years = [...new Set(list.map((p) => p.year))].sort((a, b) => b - a);
+
+  const avg = rows.length ? Math.round(rows.reduce((n, r) => n + r.pr.pct, 0) / rows.length) : 0;
+  const complete = rows.filter((r) => r.pr.pct >= 100).length;
+  const low = rows.filter((r) => r.pr.pct < 50).length;
+  const noThumb = rows.filter((r) => !r.pr.hasThumb).length;
+
+  // 카테고리별 전체 충족률
+  const catCov = CATEGORIES.filter((c) => c.kind !== "note").map((c) => ({ c, n: rows.filter((r) => r.pr.per[c.id] > 0).length }));
+
+  // 최근 현황기록 (전체 프로젝트)
+  const recentLogs = list
+    .flatMap((p) => (p.assets || []).filter((a) => a.section === "log").map((a) => ({ ...a, _p: p })))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .slice(0, 6);
+
+  content.innerHTML = `
+    <div class="content-head">
+      <div><h1>진행 현황</h1><p>프로젝트별 자료 업로드 진행률을 한눈에 점검합니다 · 필수 카테고리 ${REQUIRED_CATEGORIES.length}개 기준</p></div>
+      <div class="head-actions"><a class="btn" href="#/users">구성원 관리${pending.length ? ` <span class="pill off" style="margin-left:4px">승인 대기 ${pending.length}</span>` : ""}</a></div>
+    </div>
+
+    ${pending.length ? `<div class="alert"><b>승인 대기 중인 가입 신청 ${pending.length}건</b> — ${pending.map((u) => esc(u.name) + (u.dept ? `(${esc(u.dept)})` : "")).join(", ")} <a href="#/users">승인하러 가기 →</a></div>` : ""}
+
+    <div class="stats-mini" style="grid-template-columns:repeat(5,1fr)">
+      <div class="st"><b>${list.length}</b><span>전체 프로젝트</span></div>
+      <div class="st"><b class="${pctClass(avg)}-c">${avg}%</b><span>평균 진행률</span></div>
+      <div class="st"><b class="full-c">${complete}</b><span>완료 (100%)</span></div>
+      <div class="st"><b class="low-c">${low}</b><span>미흡 (50% 미만)</span></div>
+      <div class="st"><b class="${noThumb ? "mid-c" : ""}">${noThumb}</b><span>메인 썸네일 없음</span></div>
+    </div>
+
+    <div class="card">
+      <h2>카테고리별 충족률 <small>해당 카테고리에 자료가 1건 이상 있는 프로젝트 비율</small></h2>
+      <div class="cov-grid">
+        ${catCov
+          .map(({ c, n }) => {
+            const pct = list.length ? Math.round((n / list.length) * 100) : 0;
+            return `<div class="cov"><div class="cov-h"><span>${c.icon} ${esc(c.label)}</span><b>${n}/${list.length}</b></div><div class="bar"><i class="${pctClass(pct)}" style="width:${pct}%"></i></div></div>`;
+          })
+          .join("")}
+      </div>
+    </div>
+
+    <div class="card" style="padding:0">
+      <div class="matrix-toolbar">
+        <h2 style="margin:0;padding:0">프로젝트 × 카테고리 매트릭스</h2>
+        <div style="display:flex;gap:8px">
+          <select id="dy"><option value="">전체 연도</option>${years.map((y) => `<option>${y}</option>`).join("")}</select>
+          <select id="ds"><option value="pct">진행률 낮은 순</option><option value="pct-desc">진행률 높은 순</option><option value="recent">최근 업로드 순</option><option value="year">연도 순</option></select>
+          <label class="f inline" style="font-size:13px;color:var(--muted)"><input type="checkbox" id="dlow"> 미흡만</label>
+        </div>
+      </div>
+      <div class="matrix-wrap"><table class="matrix" id="matrix"></table></div>
+      <p class="legend">● 자료 있음 (숫자 = 건수) · <span class="miss">○</span> 미등록 · 현황기록·기타는 진행률에 포함되지 않음</p>
+    </div>
+
+    <div class="card">
+      <h2>최근 현황기록 <small>구성원들이 남긴 진행 상황 메모</small></h2>
+      ${
+        recentLogs.length
+          ? `<div class="log-list compact">${recentLogs
+              .map(
+                (l) => `<div class="log">
+              <div class="log-h"><b>${esc(l.author?.name || "")}</b><span>${[l.author?.dept, l.author?.position].filter(Boolean).map(esc).join(" · ")}</span><time>${new Date(l.createdAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}</time></div>
+              <div class="log-p"><a href="#/edit/${l._p.id}">${esc(l._p.title)}</a></div>
+              ${l.title ? `<div class="log-t">${esc(l.title)}</div>` : ""}
+              <div class="log-b">${esc(l.body || "")}</div>
+            </div>`
+              )
+              .join("")}</div>`
+          : `<div class="empty-sm">아직 현황기록이 없습니다.</div>`
+      }
+    </div>`;
+
+  const cats = CATEGORIES.filter((c) => c.kind !== "note");
+  const drawMatrix = () => {
+    const fy = $("#dy").value;
+    const sort = $("#ds").value;
+    const onlyLow = $("#dlow").checked;
+    let rs = rows.filter((r) => (!fy || String(r.p.year) === fy) && (!onlyLow || r.pr.pct < 50));
+    rs.sort((a, b) => {
+      if (sort === "pct") return a.pr.pct - b.pr.pct || b.p.year - a.p.year;
+      if (sort === "pct-desc") return b.pr.pct - a.pr.pct || b.p.year - a.p.year;
+      if (sort === "recent") return b.pr.lastUpload - a.pr.lastUpload;
+      return b.p.year - a.p.year || a.p.title.localeCompare(b.p.title, "ko");
+    });
+    $("#matrix").innerHTML = `
+      <thead><tr>
+        <th class="sticky">프로젝트</th><th>진행률</th>
+        ${cats.map((c) => `<th title="${esc(c.label)}">${c.icon}<br><small>${esc(c.label)}</small></th>`).join("")}
+        <th>📝<br><small>현황기록</small></th><th>최근 업로드</th><th></th>
+      </tr></thead>
+      <tbody>${
+        rs.length
+          ? rs
+              .map(
+                ({ p, pr }) => `<tr>
+          <td class="sticky"><div class="t">${esc(p.title)}</div><div class="s">${p.year} · ${esc(fieldLabel(p.field))}${p.hidden ? " · <span class='pill off'>비공개</span>" : ""}</div></td>
+          <td><div class="pct ${pctClass(pr.pct)}"><div class="bar"><i class="${pctClass(pr.pct)}" style="width:${pr.pct}%"></i></div><b>${pr.pct}%</b><small>${pr.done}/${pr.total}</small></div></td>
+          ${cats
+            .map((c) => {
+              const n = pr.per[c.id];
+              const req = REQUIRED_CATEGORIES.includes(c.id);
+              return `<td class="cell ${n ? "ok" : req ? "miss" : "opt"}">${n ? `<span class="dot">●</span><small>${n}</small>` : `<span class="dot">○</span>`}</td>`;
+            })
+            .join("")}
+          <td class="cell ${pr.logs.length ? "ok" : "opt"}">${pr.logs.length ? `<span class="dot">●</span><small>${pr.logs.length}</small>` : `<span class="dot">○</span>`}</td>
+          <td class="s">${pr.lastUpload ? new Date(pr.lastUpload).toLocaleDateString("ko-KR") : "-"}</td>
+          <td><a class="btn sm" href="#/edit/${p.id}">편집</a></td>
+        </tr>`
+              )
+              .join("")
+          : `<tr><td colspan="${cats.length + 5}" class="empty-sm">조건에 맞는 프로젝트가 없습니다.</td></tr>`
+      }</tbody>`;
+  };
+  ["#dy", "#ds", "#dlow"].forEach((s) => $(s).addEventListener("change", drawMatrix));
+  drawMatrix();
+}
+
+/* =====================================================================
    프로젝트 목록
    ===================================================================== */
 async function viewProjects() {
@@ -117,7 +309,7 @@ async function viewProjects() {
       <select id="ff"><option value="">전체 분야</option>${FIELDS.map((f) => `<option value="${f.id}">${esc(f.label)}</option>`).join("")}</select>
     </div>
     <div class="card" style="padding:0 6px"><table class="table">
-      <thead><tr><th></th><th>프로젝트</th><th>연도</th><th>분야</th><th>자료</th><th>상태</th><th></th></tr></thead>
+      <thead><tr><th></th><th>프로젝트</th><th>연도</th><th>분야</th><th>자료</th><th>진행률</th><th>상태</th><th></th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>`;
 
@@ -128,24 +320,26 @@ async function viewProjects() {
     const rows = list.filter((p) => (!q || `${p.title} ${p.client}`.toLowerCase().includes(q)) && (!fy || String(p.year) === fy) && (!ff || p.field === ff));
     $("#rows").innerHTML = rows.length
       ? rows
-          .map(
-            (p) => `
+          .map((p) => {
+            const pr = progressOf(p);
+            return `
           <tr>
             <td><img class="thumb" data-src="${p.thumbnail || ""}" alt=""></td>
             <td><div class="t">${esc(p.title)}</div><div class="s">${esc(p.client || "")} · ${esc(p.period || "")}</div></td>
             <td>${p.year}</td>
             <td><span class="pill">${esc(fieldLabel(p.field))}</span></td>
-            <td>${(p.assets || []).length}건</td>
+            <td>${(p.assets || []).filter((a) => a.section !== "log").length}건${pr.logs.length ? `<div class="s">기록 ${pr.logs.length}</div>` : ""}</td>
+            <td><div class="pct ${pctClass(pr.pct)}" title="미등록: ${pr.missing.map((k) => catById(k).label).join(", ") || "없음"}"><div class="bar"><i class="${pctClass(pr.pct)}" style="width:${pr.pct}%"></i></div><b>${pr.pct}%</b></div></td>
             <td><span class="pill ${p.hidden ? "off" : "on"}">${p.hidden ? "비공개" : "공개"}</span></td>
             <td><div class="acts">
               <a class="btn sm" href="index.html#/project/${p.id}" target="_blank">보기</a>
               <a class="btn sm primary" href="#/edit/${p.id}">편집</a>
               <button class="btn sm danger" data-del="${p.id}">삭제</button>
             </div></td>
-          </tr>`
-          )
+          </tr>`;
+          })
           .join("")
-      : `<tr><td colspan="7" class="empty-sm">조건에 맞는 프로젝트가 없습니다.</td></tr>`;
+      : `<tr><td colspan="8" class="empty-sm">조건에 맞는 프로젝트가 없습니다.</td></tr>`;
     hydrateImgs($("#rows"));
     $$("[data-del]").forEach((b) =>
       b.addEventListener("click", async () => {
@@ -247,7 +441,23 @@ async function viewEdit(id) {
           <h2>자료 관리 <small>카테고리를 선택하고 파일을 끌어다 놓으세요</small></h2>
           ${isNew ? `<div class="empty-sm">먼저 기본 정보를 저장하면 자료를 업로드할 수 있습니다.</div>` : `
           <div class="cat-tabs" id="catTabs"></div>
-          <div class="drop-row">
+
+          <!-- 현황기록 작성 (카테고리가 '현황기록'일 때만 표시) -->
+          <div id="logPane" hidden>
+            <div class="log-form">
+              <div class="row c3">
+                <label class="f"><span>이름</span><input id="lg-name" value="${esc(me.name)}"></label>
+                <label class="f"><span>소속</span><input id="lg-dept" value="${esc(me.dept || "")}" placeholder="예) 기획1팀"></label>
+                <label class="f"><span>직책</span><input id="lg-pos" value="${esc(me.position || "")}" placeholder="예) 대리"></label>
+              </div>
+              <label class="f"><span>제목 <span class="hint">(선택)</span></span><input id="lg-title" placeholder="예) 현장 전력 이슈 / 발주처 피드백 / 잘된 점"></label>
+              <label class="f"><span>상황 설명 *</span><textarea id="lg-body" rows="5" placeholder="진행하면서 겪은 상황, 이슈와 해결 과정, 다음에 반영할 교훈 등을 자유롭게 남겨주세요."></textarea></label>
+              <div style="display:flex;justify-content:flex-end"><button class="btn primary" id="lg-add">기록 남기기</button></div>
+            </div>
+            <div class="log-list" id="logList"></div>
+          </div>
+
+          <div class="drop-row" id="dropRow">
             <div class="drop" id="drop">
               <b>파일을 여기에 끌어다 놓거나 클릭해서 선택</b>
               <small>이미지(JPG/PNG) · PDF · MP4 — 이미지는 자동으로 2000px / 썸네일 640px로 축소되어 저장됩니다</small>
@@ -396,7 +606,65 @@ async function viewEdit(id) {
     );
   };
 
+  /* --- 현황기록 --- */
+  const drawLogs = () => {
+    const logs = p.assets.map((a, i) => ({ a, i })).filter(({ a }) => a.section === "log").sort((x, y) => (y.a.createdAt || 0) - (x.a.createdAt || 0));
+    $("#logList").innerHTML = logs.length
+      ? logs
+          .map(
+            ({ a, i }) => `<div class="log">
+          <div class="log-h">
+            <b>${esc(a.author?.name || "")}</b>
+            <span>${[a.author?.dept, a.author?.position].filter(Boolean).map(esc).join(" · ")}</span>
+            <time>${new Date(a.createdAt).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })}</time>
+            ${me.role === "admin" || a.author?.email === me.email ? `<button class="icon-btn" data-lgrm="${i}" title="삭제">×</button>` : ""}
+          </div>
+          ${a.title ? `<div class="log-t">${esc(a.title)}</div>` : ""}
+          <div class="log-b">${esc(a.body || "")}</div>
+        </div>`
+          )
+          .join("")
+      : `<div class="empty-sm">아직 기록이 없습니다. 위에서 첫 기록을 남겨보세요.</div>`;
+    $$("[data-lgrm]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        if (!confirm("이 기록을 삭제할까요?")) return;
+        p.assets.splice(b.dataset.lgrm, 1);
+        await Store.saveProject(p);
+        toast("기록이 삭제되었습니다");
+        drawTabs();
+        drawLogs();
+      })
+    );
+  };
+  $("#lg-add").addEventListener("click", async () => {
+    const body = $("#lg-body").value.trim();
+    const name = $("#lg-name").value.trim();
+    if (!name) return toast("이름을 입력하세요", "err"), $("#lg-name").focus();
+    if (!body) return toast("상황 설명을 입력하세요", "err"), $("#lg-body").focus();
+    p.assets.push({
+      section: "log",
+      type: "note",
+      title: $("#lg-title").value.trim(),
+      body,
+      author: { name, dept: $("#lg-dept").value.trim(), position: $("#lg-pos").value.trim(), email: me.email },
+      createdAt: Date.now(),
+      uploadedAt: Date.now(),
+    });
+    await Store.saveProject(p);
+    $("#lg-title").value = "";
+    $("#lg-body").value = "";
+    toast("현황기록이 저장되었습니다");
+    drawTabs();
+    drawLogs();
+  });
+
   const drawAssets = () => {
+    const isLog = catById(activeCat).kind === "note";
+    $("#logPane").hidden = !isLog;
+    $("#dropRow").hidden = isLog;
+    $("#assetList").hidden = isLog;
+    if (isLog) return drawLogs();
+
     const items = p.assets.map((a, i) => ({ a, i })).filter(({ a }) => a.section === activeCat);
     $("#assetList").innerHTML = items.length
       ? items
@@ -412,7 +680,7 @@ async function viewEdit(id) {
             <div class="bd">
               <input data-ai="${i}" data-k="title" value="${esc(a.title)}" placeholder="제목">
               <input data-ai="${i}" data-k="desc" value="${esc(a.desc || "")}" placeholder="설명 (선택)">
-              <select data-ai="${i}" data-k="section" title="카테고리 이동">${CATEGORIES.map((c) => `<option value="${c.id}" ${c.id === a.section ? "selected" : ""}>${c.icon} ${esc(c.label)}</option>`).join("")}</select>
+              <select data-ai="${i}" data-k="section" title="카테고리 이동">${CATEGORIES.filter((c) => c.kind !== "note").map((c) => `<option value="${c.id}" ${c.id === a.section ? "selected" : ""}>${c.icon} ${esc(c.label)}</option>`).join("")}</select>
             </div>
           </div>`
           )
@@ -541,35 +809,69 @@ async function viewUsers() {
     return;
   }
   const users = await Store.auth.listUsers();
+  const pending = users.filter((u) => u.status === "pending");
+  const active = users.filter((u) => u.status !== "pending").sort((a, b) => (a.role === b.role ? 0 : a.role === "admin" ? -1 : 1));
+  const who = (u) => [u.dept, u.position].filter(Boolean).map(esc).join(" · ") || `<span style="opacity:.5">-</span>`;
+
   content.innerHTML = `
     <div class="content-head">
-      <div><h1>구성원 관리</h1><p>자료를 업로드할 수 있는 구성원 계정을 관리합니다</p></div>
+      <div><h1>구성원 관리</h1><p>가입 신청을 승인하고 구성원 권한을 관리합니다</p></div>
     </div>
+
+    <div class="card ${pending.length ? "card-attn" : ""}">
+      <h2>가입 신청 승인 대기 <small>${pending.length}건</small></h2>
+      ${
+        pending.length
+          ? `<table class="table">
+          <thead><tr><th>이름</th><th>소속 · 직책</th><th>이메일</th><th>신청일</th><th></th></tr></thead>
+          <tbody>${pending
+            .map(
+              (u) => `<tr>
+            <td class="t">${esc(u.name)}</td><td>${who(u)}</td><td>${esc(u.email)}</td>
+            <td class="s">${new Date(u.createdAt).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" })}</td>
+            <td><div class="acts">
+              <button class="btn sm primary" data-approve="${u.email}">승인</button>
+              <button class="btn sm danger" data-reject="${u.email}">거절</button>
+            </div></td></tr>`
+            )
+            .join("")}</tbody></table>`
+          : `<div class="empty-sm" style="padding:16px 0">대기 중인 신청이 없습니다.</div>`
+      }
+      <p style="font-size:12px;color:var(--muted);margin:12px 0 0">${
+        DRIVE
+          ? `회사 Google 계정(<b>@${esc(CONFIG.ALLOWED_DOMAIN || "-")}</b>)으로 로그인하면 자동으로 신청이 접수됩니다. 승인 전에는 로그인할 수 없습니다.`
+          : `구성원이 로그인 화면의 "구성원 가입 신청"으로 회사 이메일·비밀번호를 등록하면 여기에 표시됩니다. 승인 전에는 로그인할 수 없습니다.`
+      }</p>
+    </div>
+
     <div class="card">
-      <h2>구성원 추가</h2>
-      <form id="addUser" class="row ${DRIVE ? "c3" : "c4"}" style="align-items:end">
-        <label class="f"><span>이름</span><input name="name" required></label>
-        <label class="f"><span>${DRIVE ? "Google 계정 이메일" : "이메일"}</span><input name="email" type="email" required></label>
-        ${DRIVE ? "" : `<label class="f"><span>초기 비밀번호</span><input name="pw" type="text" required minlength="6"></label>`}
+      <h2>구성원 직접 추가 <small>관리자가 바로 승인된 계정을 만듭니다</small></h2>
+      <form id="addUser" class="row ${DRIVE ? "c4" : "c3"}" style="align-items:end">
+        <label class="f"><span>이름 *</span><input name="name" required></label>
+        <label class="f"><span>소속</span><input name="dept" placeholder="기획1팀"></label>
+        <label class="f"><span>직책</span><input name="position" placeholder="대리"></label>
+        <label class="f"><span>${DRIVE ? "Google 계정 이메일 *" : "회사 이메일 *"}</span><input name="email" type="email" required></label>
+        ${DRIVE ? "" : `<label class="f"><span>초기 비밀번호 *</span><input name="pw" type="text" required minlength="6"></label>`}
         <label class="f"><span>권한</span><select name="role"><option value="editor">구성원 (업로드·편집)</option><option value="admin">관리자 (전체)</option></select></label>
         <button class="btn primary" style="grid-column:1/-1;justify-self:start">추가</button>
       </form>
-      <p style="font-size:12px;color:var(--muted);margin:12px 0 0">${
-        DRIVE
-          ? `Google 계정으로 로그인하는 허용 목록입니다. ${CONFIG.ALLOWED_DOMAIN ? `<b>@${esc(CONFIG.ALLOWED_DOMAIN)}</b> 계정은 첫 로그인 시 자동으로 구성원에 추가됩니다.` : ""} 비밀번호는 관리하지 않습니다.<br>Drive 폴더 자체의 편집 권한은 Google Drive 공유 설정에서 별도로 부여해야 업로드가 됩니다.`
-          : `Google Drive 연동 후에는 이 화면이 "회사 Google 계정 허용 목록" 관리로 바뀝니다. 비밀번호 관리가 필요 없어집니다.`
-      }</p>
     </div>
+
     <div class="card" style="padding:0 6px"><table class="table">
-      <thead><tr><th>이름</th><th>이메일</th><th>권한</th><th>등록일</th><th></th></tr></thead>
-      <tbody>${users
+      <thead><tr><th>이름</th><th>소속 · 직책</th><th>이메일</th><th>권한</th><th>상태</th><th>등록일</th><th></th></tr></thead>
+      <tbody>${active
         .map(
           (u) => `<tr>
-          <td class="t">${esc(u.name)}</td><td>${esc(u.email)}</td>
+          <td class="t">${esc(u.name)}${u.email === me.email ? ` <span class="pill" style="margin-left:4px">나</span>` : ""}</td>
+          <td>${who(u)}</td>
+          <td>${esc(u.email)}</td>
           <td><span class="pill ${u.role === "admin" ? "on" : ""}">${u.role === "admin" ? "관리자" : "구성원"}</span></td>
+          <td><span class="pill ${u.status === "rejected" ? "off" : "on"}">${u.status === "rejected" ? "거절됨" : "승인"}</span></td>
           <td class="s">${new Date(u.createdAt).toLocaleDateString("ko-KR")}</td>
           <td><div class="acts">
-            <button class="btn sm" data-role="${u.email}" data-to="${u.role === "admin" ? "editor" : "admin"}">${u.role === "admin" ? "구성원으로" : "관리자로"}</button>
+            <button class="btn sm" data-profile="${u.email}">정보 수정</button>
+            ${u.email !== me.email ? `<button class="btn sm" data-role="${u.email}" data-to="${u.role === "admin" ? "editor" : "admin"}">${u.role === "admin" ? "구성원으로" : "관리자로"}</button>` : ""}
+            ${u.status === "rejected" ? `<button class="btn sm primary" data-approve="${u.email}">승인</button>` : ""}
             ${DRIVE ? "" : `<button class="btn sm" data-pw="${u.email}">비밀번호 재설정</button>`}
             ${u.email !== me.email ? `<button class="btn sm danger" data-urm="${u.email}">삭제</button>` : ""}
           </div></td></tr>`
@@ -581,13 +883,49 @@ async function viewUsers() {
     e.preventDefault();
     const fd = new FormData(e.target);
     try {
-      await Store.auth.addUser({ name: fd.get("name"), email: fd.get("email"), pw: fd.get("pw"), role: fd.get("role") });
+      await Store.auth.addUser({ name: fd.get("name"), dept: fd.get("dept"), position: fd.get("position"), email: fd.get("email"), pw: fd.get("pw"), role: fd.get("role") });
       toast("구성원이 추가되었습니다");
       viewUsers();
+      refreshBadges();
     } catch (err) {
       toast(err.message, "err");
     }
   });
+  $$("[data-approve]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await Store.auth.updateUser(b.dataset.approve, { status: "approved" });
+      toast(`${b.dataset.approve} 승인되었습니다`);
+      viewUsers();
+      refreshBadges();
+    })
+  );
+  $$("[data-reject]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!confirm(`${b.dataset.reject} 의 가입 신청을 거절할까요?`)) return;
+      await Store.auth.updateUser(b.dataset.reject, { status: "rejected" });
+      viewUsers();
+      refreshBadges();
+    })
+  );
+  $$("[data-profile]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const u = users.find((x) => x.email === b.dataset.profile);
+      const name = prompt("이름", u.name);
+      if (name === null) return;
+      const dept = prompt("소속", u.dept || "");
+      if (dept === null) return;
+      const position = prompt("직책", u.position || "");
+      if (position === null) return;
+      await Store.auth.updateUser(u.email, { name: name.trim() || u.name, dept: dept.trim(), position: position.trim() });
+      if (u.email === me.email) {
+        me = { ...me, name: name.trim() || u.name, dept: dept.trim(), position: position.trim() };
+        sessionStorage.setItem(DRIVE ? "wellbi-drive-user" : "wellbi-admin-session", JSON.stringify(me));
+        showAdmin();
+      }
+      toast("정보가 수정되었습니다");
+      viewUsers();
+    })
+  );
   $$("[data-role]").forEach((b) =>
     b.addEventListener("click", async () => {
       await Store.auth.updateUser(b.dataset.role, { role: b.dataset.to });
@@ -647,6 +985,14 @@ async function viewSettings() {
         <label class="btn">프로젝트 데이터 가져오기 (JSON)<input type="file" id="imp" accept="application/json" hidden></label>
       </div>
       <p style="font-size:12px;color:var(--muted);margin:12px 0 0">JSON에는 프로젝트 정보와 자료 목록(경로)이 포함됩니다. ${DRIVE ? "가져오기 시 각 프로젝트의 project.json 과 index.json 이 Drive에 다시 기록됩니다." : "프로토타입에서 올린 파일(local: 키)은 Drive로 자동 이관되지 않으므로 Drive 전환 후 다시 업로드하세요."}</p>
+      ${
+        DRIVE
+          ? ""
+          : `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+        <button class="btn" id="reseed">샘플 프로젝트 다시 불러오기</button>
+        <span style="font-size:12px;color:var(--muted);margin-left:10px">data.js 의 샘플 7건을 최신 내용으로 덮어씁니다 (직접 만든 프로젝트·업로드 파일·구성원은 유지)</span>
+      </div>`
+      }
     </div>
     ${
       DRIVE
@@ -681,6 +1027,13 @@ async function viewSettings() {
     }
   });
 
+  $("#reseed")?.addEventListener("click", async () => {
+    if (!confirm("샘플 프로젝트 7건을 data.js 최신 내용으로 덮어쓸까요?\n샘플에 직접 올린 파일·기록은 사라집니다.")) return;
+    const n = await Store.reseedSamples();
+    toast(`샘플 ${n}건을 다시 불러왔습니다`);
+    refreshBadges();
+  });
+
   $("#exp").addEventListener("click", async () => {
     const blob = new Blob([await Store.exportJSON()], { type: "application/json" });
     const a = document.createElement("a");
@@ -705,18 +1058,20 @@ async function viewSettings() {
    ===================================================================== */
 function route() {
   if (!me) return showLogin();
-  const seg = (location.hash || "#/projects").replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  const seg = (location.hash || (me.role === "admin" ? "#/dashboard" : "#/projects")).replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   const nav = seg[0] === "edit" ? "projects" : seg[0];
   $$("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === nav));
   window.onbeforeunload = null;
   content.scrollTop = 0;
   window.scrollTo(0, 0);
 
-  if (seg[0] === "new") viewEdit(null);
+  if (seg[0] === "dashboard") viewDashboard();
+  else if (seg[0] === "new") viewEdit(null);
   else if (seg[0] === "edit" && seg[1]) viewEdit(seg[1]);
   else if (seg[0] === "users") viewUsers();
   else if (seg[0] === "settings") viewSettings();
   else viewProjects();
+  refreshBadges();
 }
 
 window.addEventListener("hashchange", route);

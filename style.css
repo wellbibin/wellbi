@@ -184,6 +184,18 @@ img { display: block; max-width: 100%; }
 .tile-sub { position: relative; font-size: 12px; color: var(--muted); }
 
 .section-link:hover { color: var(--accent-2); }
+
+/* ---------- 현황기록 타임라인 ---------- */
+.log-list { display: flex; flex-direction: column; gap: 12px; max-width: 860px; }
+.log { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; padding: 16px 18px; }
+.log-h { display: flex; align-items: center; gap: 10px; font-size: 13px; flex-wrap: wrap; }
+.log-h b { font-size: 15px; }
+.log-h span { color: var(--muted); }
+.log-h time { color: var(--muted); font-size: 12px; margin-left: auto; }
+.log-p { font-size: 12px; margin-top: 6px; }
+.log-p a { color: var(--accent-2); }
+.log-t { font-weight: 700; margin-top: 10px; font-size: 15px; }
+.log-b { margin-top: 6px; font-size: 14px; color: #c3cbd9; white-space: pre-wrap; line-height: 1.7; }
 .admin-link { color: var(--muted); text-decoration: underline dotted; }
 .admin-link:hover { color: var(--text); }
 
@@ -293,6 +305,9 @@ img { display: block; max-width: 100%; }
   display: flex; flex-direction: column; align-items: center; gap: 14px; color: var(--muted);
 }
 .lb-stage .lb-link a { color: var(--accent-2); font-size: 18px; font-weight: 700; word-break: break-all; }
+.lb-stage .lb-link, .lb-stage .lb-fallback { padding: 24px; text-align: center; max-width: 560px; }
+.lb-stage .lb-link small, .lb-stage .lb-fallback small { display: block; font-size: 13px; color: var(--muted); line-height: 1.6; }
+.lb-stage .lb-fallback { display: flex; flex-direction: column; gap: 10px; color: var(--text); }
 
 .lb-info {
   display: flex; justify-content: space-between; align-items: center; gap: 16px;

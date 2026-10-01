@@ -182,6 +182,18 @@ function viewProjectsIn(year, field) {
 // 카테고리 검색: 모든 프로젝트의 해당 카테고리 자료를 모아서 나열 (프로젝트별 그룹)
 function viewCategorySearch(cat) {
   const list = sortedProjects().filter((p) => p.assets.some((a) => a.section === cat.id));
+
+  // 현황기록은 타임라인으로 (최신순, 프로젝트 링크 포함)
+  if (cat.kind === "note") {
+    const logs = list
+      .flatMap((p) => p.assets.filter((a) => a.section === cat.id).map((a) => ({ a, p })))
+      .sort((x, y) => (y.a.createdAt || 0) - (x.a.createdAt || 0));
+    app.innerHTML =
+      crumbs([{ label: "HOME", href: "#/" }, { label: "검색" }]) +
+      pageHead(`${cat.icon} ${esc(cat.label)}`, `전체 프로젝트 · ${logs.length}건 기록`) +
+      (logs.length ? `<div class="log-list">${logs.map(({ a, p }) => logCard(a, p)).join("")}</div>` : `<div class="empty">아직 현황기록이 없습니다.</div>`);
+    return;
+  }
   currentAssets = list.flatMap((p) => p.assets.filter((a) => a.section === cat.id).map((a) => ({ ...a, _project: p })));
 
   let idx = 0;
@@ -242,6 +254,21 @@ function assetCard(a, idx) {
     </button>`;
 }
 
+// 현황기록(note) 타임라인 카드
+function logCard(a, project) {
+  const who = [a.author?.dept, a.author?.position].filter(Boolean).map(esc).join(" · ");
+  return `
+    <article class="log">
+      <div class="log-h">
+        <b>${esc(a.author?.name || "")}</b>${who ? `<span>${who}</span>` : ""}
+        <time>${a.createdAt ? new Date(a.createdAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" }) : ""}</time>
+      </div>
+      ${project ? `<div class="log-p"><a href="#/project/${project.id}">${esc(project.title)}</a></div>` : ""}
+      ${a.title ? `<div class="log-t">${esc(a.title)}</div>` : ""}
+      <div class="log-b">${esc(a.body || "")}</div>
+    </article>`;
+}
+
 function viewProject(id) {
   const p = DATA.find((x) => x.id === id);
   if (!p) {
@@ -251,11 +278,20 @@ function viewProject(id) {
 
   // 섹션별 그룹핑 (CATEGORIES 순서 유지, 자료 있는 것만)
   const sections = CATEGORIES.map((c) => ({ c, items: p.assets.filter((a) => a.section === c.id) })).filter((s) => s.items.length);
-  currentAssets = sections.flatMap((s) => s.items);
+  // 라이트박스 순회 대상은 파일 자료만 (현황기록 제외)
+  currentAssets = sections.filter((s) => s.c.kind !== "note").flatMap((s) => s.items);
 
   let idx = 0;
   const sectionsHtml = sections
     .map(({ c, items }) => {
+      if (c.kind === "note") {
+        const logs = [...items].sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0));
+        return `
+        <section class="section" id="sec-${c.id}">
+          <div class="section-head"><h3>${c.icon} ${esc(c.label)}</h3><span>${items.length}건 · 진행 중 남긴 상황 기록</span></div>
+          <div class="log-list">${logs.map((a) => logCard(a)).join("")}</div>
+        </section>`;
+      }
       const cards = items.map((a) => assetCard(a, idx++)).join("");
       return `
         <section class="section" id="sec-${c.id}">
@@ -266,7 +302,7 @@ function viewProject(id) {
     .join("");
 
   const tabs =
-    `<button class="tab active" data-target="top">전체<span class="cnt">${currentAssets.length}</span></button>` +
+    `<button class="tab active" data-target="top">전체<span class="cnt">${sections.reduce((n, s) => n + s.items.length, 0)}</span></button>` +
     sections.map(({ c, items }) => `<button class="tab" data-target="sec-${c.id}">${c.icon} ${esc(c.label)}<span class="cnt">${items.length}</span></button>`).join("");
 
   app.innerHTML = `
@@ -321,19 +357,37 @@ function youtubeId(url) {
   return m ? m[1] : null;
 }
 
+// 상대 경로 파일 존재 여부 (file:// 에서는 fetch 가 막히므로 존재하지 않는 것으로 간주)
+const existsCache = new Map();
+async function urlExists(url) {
+  if (existsCache.has(url)) return existsCache.get(url);
+  let ok = false;
+  if (location.protocol !== "file:") {
+    try {
+      const r = await fetch(url, { method: "HEAD" });
+      ok = r.ok;
+    } catch {}
+  }
+  existsCache.set(url, ok);
+  return ok;
+}
+
 async function renderLightbox() {
   const a = currentAssets[lbIndex];
   if (!a) return;
   const rawSrc = a.src || "";
-  const missing = !rawSrc || rawSrc === "#";
+  // 샘플 데이터의 assets/ 경로는 실제 파일이 없으므로 "미등록"으로 취급
+  const isSamplePath = /^assets\//.test(rawSrc) && !(await urlExists(rawSrc));
+  const missing = !rawSrc || rawSrc === "#" || isSamplePath;
   const src = missing ? "" : await Store.resolveUrl(rawSrc);
   const thumb = await Store.resolveUrl(a.thumb);
   const isDriveFile = rawSrc.startsWith("drive:file:"); // Drive 미리보기(iframe)로 표시되는 PDF/영상
   const dl = Store.downloadUrl ? Store.downloadUrl(rawSrc) : src;
+  const isFileProtocol = location.protocol === "file:";
   let stage = "";
 
   if (missing) {
-    stage = `<div class="lb-link"><img src="${thumb}" alt="" style="max-height:60%;opacity:.5"><span>원본 파일이 아직 등록되지 않았습니다.</span></div>`;
+    stage = `<div class="lb-link">${thumb ? `<img src="${thumb}" alt="" style="max-height:60%;opacity:.5">` : ""}<span>원본 파일이 아직 등록되지 않았습니다.</span><small>관리자 → 프로젝트 편집에서 파일을 업로드하면 여기서 바로 볼 수 있습니다.</small></div>`;
   } else if (a.type === "image") {
     stage = `<img src="${src}" alt="${esc(a.title)}">`;
   } else if (a.type === "video") {
@@ -342,14 +396,29 @@ async function renderLightbox() {
       ? `<iframe src="https://www.youtube.com/embed/${yt}?autoplay=1&rel=0" allow="autoplay; fullscreen" allowfullscreen></iframe>`
       : isDriveFile
         ? `<iframe src="${src}" allow="autoplay; fullscreen" allowfullscreen title="${esc(a.title)}"></iframe>`
-        : `<video src="${src}" controls autoplay playsinline></video>`;
+        : `<video src="${src}" controls autoplay playsinline></video>
+           <div class="lb-fallback" hidden><span>영상을 재생할 수 없습니다.</span><small>브라우저가 지원하지 않는 코덱이거나 파일이 손상되었을 수 있습니다. 아래 "새 탭에서 열기"로 시도해 보세요.</small></div>`;
   } else if (a.type === "pdf") {
-    stage = `<iframe src="${isDriveFile ? src : src + "#view=FitH"}" title="${esc(a.title)}"></iframe>`;
+    // file:// 로 직접 열면 브라우저가 PDF iframe 을 차단함 → 안내 + 새 탭 열기
+    if (isFileProtocol && !isDriveFile && !src.startsWith("blob:")) {
+      stage = `<div class="lb-link"><span>PDF 미리보기는 로컬 서버 또는 호스팅 환경에서만 표시됩니다.</span><small>지금은 파일을 직접 열어(file://) PDF 뷰어가 차단되었습니다. "새 탭에서 열기"를 누르거나, 사이트를 GitHub Pages·로컬 서버로 여세요.</small><a href="${src}" target="_blank" rel="noopener">새 탭에서 PDF 열기 ↗</a></div>`;
+    } else {
+      stage = `<iframe src="${isDriveFile ? src : src + "#view=FitH"}" title="${esc(a.title)}"></iframe>`;
+    }
   } else {
     stage = `<div class="lb-link"><span>외부 링크</span><a href="${src}" target="_blank" rel="noopener">${esc(src)} ↗</a></div>`;
   }
 
   lbStage.innerHTML = stage;
+  // <video> 재생 실패 시 안내 표시
+  const v = lbStage.querySelector("video");
+  if (v) {
+    v.addEventListener("error", () => {
+      v.hidden = true;
+      const fb = lbStage.querySelector(".lb-fallback");
+      if (fb) fb.hidden = false;
+    });
+  }
   $("#lbTitle").textContent = a.title;
   $("#lbDesc").textContent = [catById(a.section).label, a.desc].filter(Boolean).join(" · ");
   $("#lbCounter").textContent = `${lbIndex + 1} / ${currentAssets.length}`;

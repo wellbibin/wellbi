@@ -9,6 +9,8 @@
      video  - 영상 (src: mp4 경로 또는 YouTube URL)
      pdf    - 제안서, 정량서류 등 문서 (src: pdf 경로)
      link   - 외부 링크 (src: URL)
+     note   - 현황기록 (section: "log", 파일 없음)
+              { type:"note", section:"log", title, body, author:{name, dept, position, email}, createdAt }
 
    섹션(section) 키 → CATEGORIES 에 정의된 것만 사용
    ===================================================================== */
@@ -31,7 +33,12 @@ const CATEGORIES = [
   { id: "performance", label: "공연",       icon: "🎭" },
   { id: "design",      label: "디자인·시안", icon: "🎨" },
   { id: "etc",         label: "기타",       icon: "📁" },
+  // 파일이 아닌 텍스트 기록. 진행 중 느낀 상황·이슈·교훈을 이름/소속/직책과 함께 남김
+  { id: "log",         label: "현황기록",   icon: "📝", kind: "note" },
 ];
+
+// 진행률 계산에 포함되는 "필수" 카테고리 (현황기록·기타는 선택이라 제외)
+const REQUIRED_CATEGORIES = ["proposal", "quantity", "photo", "video", "souvenir", "performance", "design"];
 
 // 썸네일이 아직 없을 때 사용하는 플레이스홀더 생성기 (실제 운영 시 실제 이미지 경로로 교체)
 const ph = (text, bg = "1e293b", fg = "e2e8f0", w = 800, h = 500) =>
@@ -77,6 +84,8 @@ const PROJECTS = [
       { section: "design", type: "image", title: "무대 디자인 3D", desc: "LED 폭 24m 메인 스테이지 렌더링", thumb: ph("Stage 3D", "0f4c81"), src: ph("Stage 3D", "0f4c81", "ffffff", 1600, 1000) },
       { section: "etc", type: "link", title: "행사 공식 홈페이지", desc: "사전등록 · 프로그램 안내 사이트", thumb: ph("Website", "475569"), src: "https://example.com" },
       { section: "etc", type: "pdf", title: "언론보도 스크랩", desc: "주요 매체 보도 27건", thumb: ph("Press", "475569"), src: "assets/2025-global-bio-forum/press.pdf" },
+      { section: "log", type: "note", title: "동시통역 부스 전력 이슈", body: "D-1 리허설 중 통역부스 4개 중 2개 전원이 불안정. 현장 전기팀과 협의해 별도 분전반에서 전용 라인 추가. 다음 행사부터는 통역부스 전원은 사전 체크리스트에 '전용 회로 확보' 항목을 넣기로 함.", author: { name: "김민수", dept: "운영1팀", position: "과장", email: "" }, createdAt: Date.parse("2025-09-09T18:40:00") },
+      { section: "log", type: "note", title: "발주처 피드백", body: "갈라디너 공연 구성(국악 X 미디어아트)에 대해 발주처 담당관이 매우 만족. 내년 포럼에서도 유사 콘셉트 제안 요청 받음. 영업 자료로 활용 가능.", author: { name: "이서연", dept: "기획2팀", position: "대리", email: "" }, createdAt: Date.parse("2025-09-12T21:10:00") },
     ],
   },
 
