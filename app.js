@@ -328,6 +328,8 @@ async function renderLightbox() {
   const missing = !rawSrc || rawSrc === "#";
   const src = missing ? "" : await Store.resolveUrl(rawSrc);
   const thumb = await Store.resolveUrl(a.thumb);
+  const isDriveFile = rawSrc.startsWith("drive:file:"); // Drive 미리보기(iframe)로 표시되는 PDF/영상
+  const dl = Store.downloadUrl ? Store.downloadUrl(rawSrc) : src;
   let stage = "";
 
   if (missing) {
@@ -338,9 +340,11 @@ async function renderLightbox() {
     const yt = youtubeId(src);
     stage = yt
       ? `<iframe src="https://www.youtube.com/embed/${yt}?autoplay=1&rel=0" allow="autoplay; fullscreen" allowfullscreen></iframe>`
-      : `<video src="${src}" controls autoplay playsinline></video>`;
+      : isDriveFile
+        ? `<iframe src="${src}" allow="autoplay; fullscreen" allowfullscreen title="${esc(a.title)}"></iframe>`
+        : `<video src="${src}" controls autoplay playsinline></video>`;
   } else if (a.type === "pdf") {
-    stage = `<iframe src="${src}#view=FitH" title="${esc(a.title)}"></iframe>`;
+    stage = `<iframe src="${isDriveFile ? src : src + "#view=FitH"}" title="${esc(a.title)}"></iframe>`;
   } else {
     stage = `<div class="lb-link"><span>외부 링크</span><a href="${src}" target="_blank" rel="noopener">${esc(src)} ↗</a></div>`;
   }
@@ -352,7 +356,7 @@ async function renderLightbox() {
   $("#lbActions").innerHTML = missing
     ? ""
     : `<a href="${src}" target="_blank" rel="noopener">새 탭에서 열기</a>` +
-      (a.type !== "link" && !youtubeId(src) ? `<a href="${src}" download="${esc(a.title)}">다운로드</a>` : "");
+      (a.type !== "link" && !youtubeId(src) ? `<a href="${dl}" target="_blank" rel="noopener" download="${esc(a.title)}">다운로드</a>` : "");
 }
 
 function openLightbox(i) {

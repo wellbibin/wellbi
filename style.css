@@ -195,12 +195,13 @@ img { display: block; max-width: 100%; }
 .back:hover { color: var(--text); }
 
 .hero {
-  display: grid; grid-template-columns: 1.15fr 1fr; gap: 32px;
+  display: grid; grid-template-columns: 1.15fr 1fr; gap: 32px; align-items: stretch;
   background: var(--card); border: 1px solid var(--line); border-radius: 18px;
   overflow: hidden; margin-bottom: 32px;
 }
-.hero-img { aspect-ratio: 16/10; background: #0f1520; }
-.hero-img img { width: 100%; height: 100%; object-fit: cover; }
+/* 상세 썸네일: 원본 비율 유지 (잘리지 않음). 세로 이미지는 최대 높이 안에서 contain */
+.hero-img { display: flex; align-items: center; justify-content: center; background: #0f1520; min-height: 320px; align-self: stretch; }
+.hero-img img { display: block; max-width: 100%; max-height: 640px; width: auto; height: auto; object-fit: contain; }
 .hero-body { padding: 32px 32px 32px 0; display: flex; flex-direction: column; gap: 16px; }
 .hero-badges { display: flex; gap: 8px; }
 .badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; background: var(--bg-2); border: 1px solid var(--line); }

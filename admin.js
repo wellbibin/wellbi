@@ -39,9 +39,19 @@ async function hydrateImgs(root = content) {
 /* =====================================================================
    로그인
    ===================================================================== */
+const DRIVE = Store.mode === "drive";
+
 function showLogin() {
   $("#loginView").hidden = false;
   $("#adminView").hidden = true;
+  $("#loginLocal").hidden = DRIVE;
+  $("#loginDrive").hidden = !DRIVE;
+  if (DRIVE) $("#allowedDomain").textContent = CONFIG.ALLOWED_DOMAIN ? "@" + CONFIG.ALLOWED_DOMAIN : "등록된 이메일";
+}
+function afterLogin() {
+  showAdmin();
+  if (!location.hash || location.hash === "#/") location.hash = "#/projects";
+  else route();
 }
 function showAdmin() {
   $("#loginView").hidden = true;
@@ -53,14 +63,26 @@ function showAdmin() {
 
 $("#loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (DRIVE) return;
   const fd = new FormData(e.target);
   try {
     me = await Store.auth.login(fd.get("email"), fd.get("pw"));
-    showAdmin();
-    if (!location.hash || location.hash === "#/") location.hash = "#/projects";
-    else route();
+    afterLogin();
   } catch (err) {
     $("#loginErr").textContent = err.message;
+  }
+});
+$("#googleLoginBtn").addEventListener("click", async () => {
+  const btn = $("#googleLoginBtn");
+  btn.disabled = true;
+  $("#loginErrDrive").textContent = "";
+  try {
+    me = await Store.auth.login();
+    afterLogin();
+  } catch (err) {
+    $("#loginErrDrive").textContent = err.message;
+  } finally {
+    btn.disabled = false;
   }
 });
 $("#logoutBtn").addEventListener("click", () => {
@@ -300,7 +322,8 @@ async function viewEdit(id) {
   const thumbInput = $("#thumbInput");
   const setThumb = async (file) => {
     if (!file || !file.type.startsWith("image/")) return toast("이미지 파일만 가능합니다", "err");
-    const r = await Store.uploadFile(file);
+    if (DRIVE && !p.id) return toast("먼저 기본 정보를 저장한 뒤 썸네일을 올려주세요", "err");
+    const r = await Store.uploadFile(file, { projectId: p.id, section: "_thumb" });
     await Store.removeFileIfLocal(p.thumbnail);
     p.thumbnail = r.src;
     thumbDrop.innerHTML = `<img src="${await Store.resolveUrl(r.src)}" alt=""><span class="ov">클릭/드롭하여 교체</span><input type="file" id="thumbInput" accept="image/*" hidden>`;
@@ -449,15 +472,22 @@ async function viewEdit(id) {
     if (!files.length) return toast("지원하지 않는 파일 형식입니다", "err");
     prog.hidden = false;
     let done = 0;
-    for (const f of files) {
-      const r = await Store.uploadFile(f, { onProgress: (v) => (prog.firstElementChild.style.width = `${((done + v) / files.length) * 100}%`) });
-      p.assets.push({ section: activeCat, type: r.type, title: f.name.replace(/\.[^.]+$/, ""), desc: "", thumb: r.thumb, src: r.src, size: r.size, uploadedBy: me.email, uploadedAt: Date.now() });
-      done++;
+    try {
+      for (const f of files) {
+        const r = await Store.uploadFile(f, { projectId: p.id, section: activeCat, onProgress: (v) => (prog.firstElementChild.style.width = `${((done + v) / files.length) * 100}%`) });
+        p.assets.push({ section: activeCat, type: r.type, title: f.name.replace(/\.[^.]+$/, ""), desc: "", thumb: r.thumb, src: r.src, size: r.size, uploadedBy: me.email, uploadedAt: Date.now() });
+        done++;
+      }
+      await Store.saveProject(p); // 업로드는 즉시 저장
+      toast(`${done}개 파일이 ${catById(activeCat).label}에 추가되었습니다`);
+    } catch (err) {
+      console.error(err);
+      if (done) await Store.saveProject(p).catch(() => {});
+      toast(`업로드 실패 (${done}/${files.length} 완료): ${err.message}`, "err");
+    } finally {
+      prog.hidden = true;
+      prog.firstElementChild.style.width = "0";
     }
-    prog.hidden = true;
-    prog.firstElementChild.style.width = "0";
-    await Store.saveProject(p); // 업로드는 즉시 저장
-    toast(`${files.length}개 파일이 ${catById(activeCat).label}에 추가되었습니다`);
     drawTabs();
     drawAssets();
   };
@@ -517,14 +547,18 @@ async function viewUsers() {
     </div>
     <div class="card">
       <h2>구성원 추가</h2>
-      <form id="addUser" class="row c4" style="align-items:end">
+      <form id="addUser" class="row ${DRIVE ? "c3" : "c4"}" style="align-items:end">
         <label class="f"><span>이름</span><input name="name" required></label>
-        <label class="f"><span>이메일</span><input name="email" type="email" required></label>
-        <label class="f"><span>초기 비밀번호</span><input name="pw" type="text" required minlength="6"></label>
+        <label class="f"><span>${DRIVE ? "Google 계정 이메일" : "이메일"}</span><input name="email" type="email" required></label>
+        ${DRIVE ? "" : `<label class="f"><span>초기 비밀번호</span><input name="pw" type="text" required minlength="6"></label>`}
         <label class="f"><span>권한</span><select name="role"><option value="editor">구성원 (업로드·편집)</option><option value="admin">관리자 (전체)</option></select></label>
         <button class="btn primary" style="grid-column:1/-1;justify-self:start">추가</button>
       </form>
-      <p style="font-size:12px;color:var(--muted);margin:12px 0 0">Google Drive 연동 후에는 이 화면이 "회사 Google 계정 허용 목록" 관리로 바뀝니다. 비밀번호 관리가 필요 없어집니다.</p>
+      <p style="font-size:12px;color:var(--muted);margin:12px 0 0">${
+        DRIVE
+          ? `Google 계정으로 로그인하는 허용 목록입니다. ${CONFIG.ALLOWED_DOMAIN ? `<b>@${esc(CONFIG.ALLOWED_DOMAIN)}</b> 계정은 첫 로그인 시 자동으로 구성원에 추가됩니다.` : ""} 비밀번호는 관리하지 않습니다.<br>Drive 폴더 자체의 편집 권한은 Google Drive 공유 설정에서 별도로 부여해야 업로드가 됩니다.`
+          : `Google Drive 연동 후에는 이 화면이 "회사 Google 계정 허용 목록" 관리로 바뀝니다. 비밀번호 관리가 필요 없어집니다.`
+      }</p>
     </div>
     <div class="card" style="padding:0 6px"><table class="table">
       <thead><tr><th>이름</th><th>이메일</th><th>권한</th><th>등록일</th><th></th></tr></thead>
@@ -536,7 +570,7 @@ async function viewUsers() {
           <td class="s">${new Date(u.createdAt).toLocaleDateString("ko-KR")}</td>
           <td><div class="acts">
             <button class="btn sm" data-role="${u.email}" data-to="${u.role === "admin" ? "editor" : "admin"}">${u.role === "admin" ? "구성원으로" : "관리자로"}</button>
-            <button class="btn sm" data-pw="${u.email}">비밀번호 재설정</button>
+            ${DRIVE ? "" : `<button class="btn sm" data-pw="${u.email}">비밀번호 재설정</button>`}
             ${u.email !== me.email ? `<button class="btn sm danger" data-urm="${u.email}">삭제</button>` : ""}
           </div></td></tr>`
         )
@@ -586,12 +620,25 @@ async function viewSettings() {
     <div class="content-head"><div><h1>설정 · 백업</h1><p>데이터 내보내기 / 가져오기 및 저장소 정보</p></div></div>
     <div class="card">
       <h2>저장소</h2>
-      <p style="margin:0 0 6px">현재 모드: <span class="pill off">프로토타입 (브라우저 내부 저장)</span></p>
+      ${
+        DRIVE
+          ? `<p style="margin:0 0 6px">현재 모드: <span class="pill on">Google Drive</span></p>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.7">
+        루트 폴더: <a href="https://drive.google.com/drive/folders/${esc(CONFIG.DRIVE_ROOT_FOLDER_ID)}" target="_blank" rel="noopener">Drive에서 열기 ↗</a><br>
+        프로젝트 메타는 각 폴더의 <code>project.json</code>, 공개 사이트는 루트의 <code>index.json</code> 을 읽습니다.<br>
+        Drive에서 직접 파일을 정리했거나 index.json 이 깨진 경우 아래 "색인 다시 만들기"를 실행하세요.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn" id="rebuild">색인(index.json) 다시 만들기</button>
+        <span id="rebuildMsg" style="font-size:12px;color:var(--muted)"></span>
+      </div>`
+          : `<p style="margin:0 0 6px">현재 모드: <span class="pill off">프로토타입 (브라우저 내부 저장)</span></p>
       <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.7">
         지금은 이 브라우저의 IndexedDB에만 저장되어 다른 PC·구성원과 공유되지 않습니다.<br>
-        다음 단계에서 <b>Google Drive(공유 드라이브) + Google 계정 로그인</b>으로 전환하면 모든 구성원이 같은 데이터를 보게 됩니다.
-      </p>
-      <p style="font-size:13px;color:var(--muted);margin:0">업로드된 파일: ${usage.count}개 · ${Store.fmtBytes(usage.bytes)}</p>
+        <code>config.js</code> 에 Google 설정을 채우면 <b>Google Drive + Google 계정 로그인</b>으로 전환되어 모든 구성원이 같은 데이터를 보게 됩니다.
+      </p>`
+      }
+      <p style="font-size:13px;color:var(--muted);margin:14px 0 0">업로드된 파일: ${usage.count}개 · ${Store.fmtBytes(usage.bytes)}</p>
     </div>
     <div class="card">
       <h2>백업 · 이관</h2>
@@ -599,18 +646,40 @@ async function viewSettings() {
         <button class="btn" id="exp">프로젝트 데이터 내보내기 (JSON)</button>
         <label class="btn">프로젝트 데이터 가져오기 (JSON)<input type="file" id="imp" accept="application/json" hidden></label>
       </div>
-      <p style="font-size:12px;color:var(--muted);margin:12px 0 0">JSON에는 프로젝트 정보와 자료 목록(경로)이 포함됩니다. 업로드한 파일 자체는 Drive 전환 시 자동 이관 도구를 제공할 예정입니다.</p>
+      <p style="font-size:12px;color:var(--muted);margin:12px 0 0">JSON에는 프로젝트 정보와 자료 목록(경로)이 포함됩니다. ${DRIVE ? "가져오기 시 각 프로젝트의 project.json 과 index.json 이 Drive에 다시 기록됩니다." : "프로토타입에서 올린 파일(local: 키)은 Drive로 자동 이관되지 않으므로 Drive 전환 후 다시 업로드하세요."}</p>
     </div>
-    <div class="card">
+    ${
+      DRIVE
+        ? ""
+        : `<div class="card">
       <h2>Google Drive 전환 준비 체크리스트</h2>
       <ol style="margin:0;padding-left:20px;font-size:14px;line-height:2;color:#c3cbd9">
         <li>Google Cloud Console → 새 프로젝트 → <b>Google Drive API</b> 사용 설정</li>
         <li>OAuth 동의 화면 (내부용 / Internal) 구성</li>
-        <li>OAuth 클라이언트 ID (웹 애플리케이션) 발급 → 승인된 JavaScript 원본에 사이트 주소 등록</li>
-        <li>공유 드라이브에 <code>WELLBI Archive</code> 폴더 생성, 구성원 편집 권한 부여</li>
-        <li>사이트 호스팅 (GitHub Pages 또는 Firebase Hosting, 무료)</li>
+        <li>OAuth 클라이언트 ID (웹 애플리케이션) + API 키 발급 → 승인된 JavaScript 원본에 사이트 주소 등록</li>
+        <li>공유 드라이브에 <code>WELLBI Archive</code> 폴더 생성 → "링크가 있는 모든 사용자 - 뷰어" 공유, 구성원 편집 권한 부여</li>
+        <li><code>config.js</code> 의 GOOGLE_CLIENT_ID / GOOGLE_API_KEY / DRIVE_ROOT_FOLDER_ID 입력</li>
+        <li>사이트 호스팅 (GitHub Pages, 무료)</li>
       </ol>
-    </div>`;
+      <p style="font-size:12px;color:var(--muted);margin:12px 0 0">자세한 절차는 저장소 README.md 참고</p>
+    </div>`
+    }`;
+
+  $("#rebuild")?.addEventListener("click", async () => {
+    const b = $("#rebuild");
+    b.disabled = true;
+    $("#rebuildMsg").textContent = "Drive 폴더를 훑는 중…";
+    try {
+      const n = await Store.rebuildIndex();
+      $("#rebuildMsg").textContent = `완료 · 프로젝트 ${n}건`;
+      toast("색인을 다시 만들었습니다");
+    } catch (err) {
+      $("#rebuildMsg").textContent = "";
+      toast("실패: " + err.message, "err");
+    } finally {
+      b.disabled = false;
+    }
+  });
 
   $("#exp").addEventListener("click", async () => {
     const blob = new Blob([await Store.exportJSON()], { type: "application/json" });
@@ -653,7 +722,12 @@ function route() {
 window.addEventListener("hashchange", route);
 
 (async () => {
-  await Store.init();
+  try {
+    await Store.init();
+  } catch (err) {
+    console.error(err);
+    toast("저장소 초기화 실패: " + err.message, "err");
+  }
   me = Store.auth.current();
   if (me) {
     showAdmin();
