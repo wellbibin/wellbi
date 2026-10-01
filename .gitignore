@@ -1,0 +1,14 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+
+# 실제 행사 자료(대용량)는 Git에 올리지 않음 — Google Drive에 보관
+assets/
+
+# 로컬 백업 JSON
+*.backup.json
