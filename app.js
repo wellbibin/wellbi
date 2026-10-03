@@ -32,11 +32,29 @@ async function loadData() {
 // 정렬: 최신 연도 → 제목순
 const sortedProjects = () => [...DATA].sort((a, b) => b.year - a.year || a.title.localeCompare(b.title, "ko"));
 
+// 자산의 썸네일 키 — 썸네일이 따로 없는 Drive 파일(PDF·영상)은 Drive 자동 썸네일 사용
+function assetThumbKey(a) {
+  if (a.thumb) return a.thumb;
+  if (a.src?.startsWith("drive:file:")) return "drive:thumb:" + a.src.slice(11);
+  return "";
+}
+
 // 썸네일/파일 키(local:...)를 실제 URL로 해석 — 렌더 후 호출
+// 로드 실패(썸네일 미생성·비공개 등) 시 깨진 이미지 대신 타입 아이콘 표시
 async function hydrateImgs(root = app) {
   for (const img of root.querySelectorAll("img[data-src]")) {
-    img.src = (await Store.resolveUrl(img.dataset.src)) || "";
+    const url = (await Store.resolveUrl(img.dataset.src)) || "";
     img.removeAttribute("data-src");
+    if (!url) {
+      img.parentElement?.classList.add("noimg");
+      img.remove();
+      continue;
+    }
+    img.onerror = () => {
+      img.parentElement?.classList.add("noimg");
+      img.remove();
+    };
+    img.src = url;
   }
 }
 
@@ -242,8 +260,8 @@ function assetCard(a, idx) {
   const isVideo = a.type === "video";
   return `
     <button class="acard" data-idx="${idx}">
-      <div class="acard-thumb">
-        <img data-src="${a.thumb}" alt="${esc(a.title)}" loading="lazy">
+      <div class="acard-thumb" data-kind="${a.type}">
+        <img data-src="${assetThumbKey(a)}" alt="${esc(a.title)}" loading="lazy">
         ${isVideo ? `<span class="acard-play"></span>` : ""}
         <span class="acard-type">${a.type}</span>
       </div>
@@ -387,7 +405,7 @@ async function renderLightbox() {
   const isSamplePath = /^assets\//.test(rawSrc) && !(await urlExists(rawSrc));
   const missing = !rawSrc || rawSrc === "#" || isSamplePath;
   const src = missing ? "" : await Store.resolveUrl(rawSrc);
-  const thumb = await Store.resolveUrl(a.thumb);
+  const thumb = await Store.resolveUrl(assetThumbKey(a));
   const isDriveFile = rawSrc.startsWith("drive:file:"); // Drive 미리보기(iframe)로 표시되는 PDF/영상
   const dl = Store.downloadUrl ? Store.downloadUrl(rawSrc) : src;
   const isFileProtocol = location.protocol === "file:";

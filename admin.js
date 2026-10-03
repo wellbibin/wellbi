@@ -672,7 +672,7 @@ async function viewEdit(id) {
             ({ a, i }) => `
           <div class="asset-edit" draggable="true" data-i="${i}">
             <div class="th">
-              ${a.thumb ? `<img data-src="${a.thumb}" alt="">` : `<div class="noimg">${a.type === "pdf" ? "📄" : a.type === "video" ? "🎬" : "🔗"}</div>`}
+              ${a.thumb || a.src?.startsWith("drive:file:") ? `<img data-src="${a.thumb || "drive:thumb:" + a.src.slice(11)}" alt="" onerror="this.outerHTML='<div class=noimg>${a.type === "pdf" ? "📄" : a.type === "video" ? "🎬" : "🔗"}</div>'">` : `<div class="noimg">${a.type === "pdf" ? "📄" : a.type === "video" ? "🎬" : "🔗"}</div>`}
               <span class="handle" title="드래그하여 순서 변경">⠿</span>
               <span class="tp">${a.type}</span>
               <button class="rm" data-rm="${i}" title="삭제">×</button>

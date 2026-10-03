@@ -35,6 +35,7 @@
    자료 키 형식
      drive:img:<fileId>   이미지 (lh3 CDN 으로 표시, 공개 공유 필요)
      drive:file:<fileId>  PDF·영상·기타 (Drive 미리보기 iframe)
+     drive:thumb:<fileId> Drive 가 자동 생성한 썸네일 (PDF 첫 페이지 · 영상 첫 프레임, drive.google.com/thumbnail)
      local:<key>          IndexedDB Blob (프로토타입)
      그 외                 외부 URL 그대로
    ===================================================================== */
@@ -537,7 +538,8 @@ const DriveStore = (() => {
       return { src: `drive:img:${a.id}`, thumb: `drive:img:${b.id}`, type: "image", size: display.size };
     }
     const a = await uploadBlob(file, { name: file.name, parentId, onProgress: (v) => onProgress(v * 0.9) });
-    let thumb = "";
+    // PDF·영상은 Drive 가 자동 생성하는 썸네일(첫 페이지/첫 프레임)을 사용 → drive:thumb:<id>
+    let thumb = `drive:thumb:${a.id}`;
     if (opts.thumbFile) {
       const t = await resizeImage(opts.thumbFile, 640, 0.8);
       const thumbParent = await ensureFolder(parentId, "_thumb");
@@ -552,6 +554,7 @@ const DriveStore = (() => {
   async function resolveUrl(key) {
     if (!key) return "";
     if (key.startsWith("drive:img:")) return `https://lh3.googleusercontent.com/d/${key.slice(10)}`;
+    if (key.startsWith("drive:thumb:")) return `https://drive.google.com/thumbnail?id=${key.slice(12)}&sz=w640`;
     if (key.startsWith("drive:file:")) return `https://drive.google.com/file/d/${key.slice(11)}/preview`;
     if (key.startsWith("local:")) return LocalStore.resolveUrl(key); // 로컬 → Drive 이관 전 잔존 데이터
     return key;

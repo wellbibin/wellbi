@@ -273,6 +273,19 @@ img { display: block; max-width: 100%; }
 .acard:hover { border-color: #34425b; transform: translateY(-3px); box-shadow: var(--shadow); }
 .acard-thumb { position: relative; aspect-ratio: 16/10; background: #0f1520; }
 .acard-thumb img { width: 100%; height: 100%; object-fit: cover; }
+/* PDF 등 문서 썸네일은 세로 비율이라 잘리지 않게 전체 표시 */
+.acard-thumb[data-kind="pdf"] img { object-fit: contain; background: #1a2230; }
+/* 썸네일 없음/로드 실패 → 타입 아이콘 */
+.acard-thumb.noimg::before {
+  content: "🖼"; position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 40px; opacity: .45;
+}
+.acard-thumb.noimg[data-kind="pdf"]::before { content: "📄"; }
+.acard-thumb.noimg[data-kind="video"]::before { content: "🎬"; }
+.acard-thumb.noimg[data-kind="link"]::before { content: "🔗"; }
+.pcard-thumb.noimg::before, .hero-img.noimg::before {
+  content: "🏛"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 48px; opacity: .35;
+}
 .acard-type {
   position: absolute; bottom: 8px; left: 8px;
   background: rgba(0,0,0,.65); backdrop-filter: blur(6px);
