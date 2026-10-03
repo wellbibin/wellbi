@@ -337,10 +337,11 @@ const DriveStore = (() => {
   const withKey = (path) => path + (path.includes("?") ? "&" : "?") + "key=" + cfg().GOOGLE_API_KEY;
 
   /* ---------- 폴더/파일 조회 ---------- */
+  // 같은 이름이 여러 개면(동시 저장으로 index.json 중복 생성 등) 가장 최근 수정본을 반환
   async function findChild(parentId, name, mimeType, { auth = true } = {}) {
     let qs = `'${parentId}' in parents and name='${name.replace(/'/g, "\\'")}' and trashed=false`;
     if (mimeType) qs += ` and mimeType='${mimeType}'`;
-    let path = `/files?q=${encodeURIComponent(qs)}&fields=files(id,name,mimeType,size)&pageSize=5&${LIST_PARAMS}`;
+    let path = `/files?q=${encodeURIComponent(qs)}&fields=files(id,name,mimeType,size,modifiedTime)&orderBy=modifiedTime desc&pageSize=5&${LIST_PARAMS}`;
     if (!auth) path = withKey(path);
     const j = await api(path, { auth });
     return j.files?.[0] || null;
@@ -397,10 +398,22 @@ const DriveStore = (() => {
       x.send(form);
     });
   }
+  // 같은 파일에 대한 저장을 직렬화 — 동시에 두 번 호출되면 "없음 → 둘 다 신규 생성"으로 중복 파일이 생기는 것을 방지
+  const jsonFileIds = new Map(); // "parentId/name" → fileId
+  const writeQueue = new Map(); // "parentId/name" → Promise
   async function writeJson(parentId, name, obj) {
-    const existing = await findChild(parentId, name);
-    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
-    return uploadBlob(blob, { name, parentId, fileId: existing?.id, mimeType: "application/json" });
+    const ck = parentId + "/" + name;
+    const prev = writeQueue.get(ck) || Promise.resolve();
+    const job = prev.catch(() => {}).then(async () => {
+      let fileId = jsonFileIds.get(ck);
+      if (!fileId) fileId = (await findChild(parentId, name))?.id;
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+      const r = await uploadBlob(blob, { name, parentId, fileId, mimeType: "application/json" });
+      jsonFileIds.set(ck, r.id);
+      return r;
+    });
+    writeQueue.set(ck, job);
+    return job;
   }
 
   /* ---------- index.json ---------- */
