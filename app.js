@@ -269,6 +269,13 @@ function logCard(a, project) {
     </article>`;
 }
 
+// 성과 수치 값 — "[대전] 2,392명 / [전남광주] 2,015명" 처럼 "/" 로 병기된 값은 항목별로 줄바꿈
+function statValue(v) {
+  const parts = String(v || "").split(/\s*\/\s*/).filter(Boolean);
+  if (parts.length < 2) return esc(v || "");
+  return parts.map(esc).join('<span class="sep">/</span><br>');
+}
+
 function viewProject(id) {
   const p = DATA.find((x) => x.id === id);
   if (!p) {
@@ -323,7 +330,7 @@ function viewProject(id) {
           <dt>기간</dt><dd>${esc(p.period)}</dd>
           <dt>장소</dt><dd>${esc(p.venue)}</dd>
         </dl>
-        ${p.stats?.length ? `<div class="stats">${p.stats.map((s) => `<div class="stat"><div class="v">${esc(s.value)}</div><div class="l">${esc(s.label)}</div></div>`).join("")}</div>` : ""}
+        ${p.stats?.length ? `<div class="stats">${p.stats.map((s) => `<div class="stat${String(s.value || "").length > 14 ? " long" : ""}"><div class="v">${statValue(s.value)}</div><div class="l">${esc(s.label)}</div></div>`).join("")}</div>` : ""}
         ${p.scope?.length ? `<div class="scope">${p.scope.map((s) => `<span>${esc(s)}</span>`).join("")}</div>` : ""}
       </div>
     </div>
