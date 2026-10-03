@@ -27,6 +27,7 @@ const FIELDS = [
 const CATEGORIES = [
   { id: "proposal",    label: "제안서",     icon: "📄" },
   { id: "quantity",    label: "정량서류",   icon: "📊" },
+  { id: "report",      label: "결과보고서", icon: "📑" },
   { id: "photo",       label: "기록사진",   icon: "📷" },
   { id: "video",       label: "영상",       icon: "🎬" },
   { id: "souvenir",    label: "기념품",     icon: "🎁" },
@@ -38,7 +39,7 @@ const CATEGORIES = [
 ];
 
 // 진행률 계산에 포함되는 "필수" 카테고리 (현황기록·기타는 선택이라 제외)
-const REQUIRED_CATEGORIES = ["proposal", "quantity", "photo", "video", "souvenir", "performance", "design"];
+const REQUIRED_CATEGORIES = ["proposal", "quantity", "report", "photo", "video", "souvenir", "performance", "design"];
 
 // 썸네일이 아직 없을 때 사용하는 플레이스홀더 생성기 (실제 운영 시 실제 이미지 경로로 교체)
 const ph = (text, bg = "1e293b", fg = "e2e8f0", w = 800, h = 500) =>
@@ -67,7 +68,7 @@ const PROJECTS = [
       { section: "proposal", type: "pdf", title: "기술제안서 (본문)", desc: "총 86p · 운영·연출·홍보 종합 제안", thumb: ph("Proposal PDF", "334155"), src: "assets/2025-global-bio-forum/proposal.pdf" },
       { section: "proposal", type: "pdf", title: "제안 발표자료 (PPT)", desc: "PT 심사용 요약본 32p", thumb: ph("Presentation", "334155"), src: "assets/2025-global-bio-forum/proposal-pt.pdf" },
       { section: "quantity", type: "pdf", title: "산출내역서", desc: "항목별 원가 · 인력 · 장비 산출", thumb: ph("Cost Sheet", "3f6212"), src: "assets/2025-global-bio-forum/quantity.pdf" },
-      { section: "quantity", type: "pdf", title: "결과보고서", desc: "참가 통계 · 만족도 조사 · 언론보도 집계", thumb: ph("Final Report", "3f6212"), src: "assets/2025-global-bio-forum/report.pdf" },
+      { section: "report", type: "pdf", title: "결과보고서", desc: "참가 통계 · 만족도 조사 · 언론보도 집계", thumb: ph("Final Report", "3f6212"), src: "assets/2025-global-bio-forum/report.pdf" },
       { section: "photo", type: "image", title: "개막식 무대", desc: "메인 오디토리움 개막 세레모니", thumb: ph("Opening Ceremony", "1e3a5f"), src: ph("Opening Ceremony", "1e3a5f", "ffffff", 1600, 1000) },
       { section: "photo", type: "image", title: "기조연설", desc: "노벨생리의학상 수상자 기조강연", thumb: ph("Keynote", "1e3a5f"), src: ph("Keynote", "1e3a5f", "ffffff", 1600, 1000) },
       { section: "photo", type: "image", title: "전시부스 전경", desc: "42개 기업 참여 전시홀", thumb: ph("Exhibition Hall", "1e3a5f"), src: ph("Exhibition Hall", "1e3a5f", "ffffff", 1600, 1000) },
@@ -140,7 +141,7 @@ const PROJECTS = [
     tags: ["야간축제", "미디어아트", "공연", "대규모"],
     assets: [
       { section: "proposal", type: "pdf", title: "축제 기획 제안서", desc: "94p", thumb: ph("Proposal", "334155"), src: "#" },
-      { section: "quantity", type: "pdf", title: "결과보고서", desc: "방문객 · 경제효과 분석", thumb: ph("Report", "3f6212"), src: "#" },
+      { section: "report", type: "pdf", title: "결과보고서", desc: "방문객 · 경제효과 분석", thumb: ph("Report", "3f6212"), src: "#" },
       { section: "photo", type: "image", title: "메인 조형물", desc: "높이 18m 빛의 나무", thumb: ph("Light Tree", "3b0764"), src: ph("Light Tree", "3b0764", "ffffff", 1600, 1000) },
       { section: "photo", type: "image", title: "미디어파사드", desc: "교량 하부 미디어파사드", thumb: ph("Media Facade", "3b0764"), src: ph("Media Facade", "3b0764", "ffffff", 1600, 1000) },
       { section: "photo", type: "image", title: "수상 무대", desc: "플로팅 스테이지 공연", thumb: ph("Floating Stage", "3b0764"), src: ph("Floating Stage", "3b0764", "ffffff", 1600, 1000) },
@@ -201,7 +202,7 @@ const PROJECTS = [
     tags: ["국제회의", "의전", "투어"],
     assets: [
       { section: "proposal", type: "pdf", title: "운영 제안서", desc: "", thumb: ph("Proposal", "334155"), src: "#" },
-      { section: "quantity", type: "pdf", title: "결과보고서", desc: "", thumb: ph("Report", "3f6212"), src: "#" },
+      { section: "report", type: "pdf", title: "결과보고서", desc: "", thumb: ph("Report", "3f6212"), src: "#" },
       { section: "photo", type: "image", title: "라운드테이블", desc: "장관급 원탁회의", thumb: ph("Round Table", "064e3b"), src: ph("Round Table", "064e3b", "ffffff", 1600, 1000) },
       { section: "photo", type: "image", title: "테크니컬 투어", desc: "부산 관광지 현장 방문", thumb: ph("Tech Tour", "064e3b"), src: ph("Tech Tour", "064e3b", "ffffff", 1600, 1000) },
       { section: "video", type: "video", title: "스케치 영상", desc: "", thumb: ph("Sketch", "7c2d12"), src: "#" },
