@@ -18,7 +18,7 @@ python -m http.server 8080
 | 파일 | 역할 |
 |---|---|
 | `index.html` / `app.js` / `style.css` | 공개 사이트 (년도 → 분야 → 프로젝트 → 상세) |
-| `admin.html` / `admin.js` / `admin.css` | 관리자 콘솔 (로그인, 프로젝트 편집, 드래그앤드롭 업로드, 구성원) |
+| `admin.html` / `admin.js` / `admin.css` | 관리자 콘솔 (로그인, 진행 현황 대시보드, 프로젝트 편집, 드래그앤드롭 업로드, 현황기록, 구성원 승인) |
 | `config.js` | **Google 설정** (클라이언트 ID · API 키 · 루트 폴더 ID). 비어 있으면 프로토타입 모드 |
 | `storage.js` | 저장 계층. `LocalStore`(IndexedDB 프로토타입) / `DriveStore`(Google Drive) — config 에 따라 자동 선택 |
 | `data.js` | 분야/카테고리 정의 + 샘플 프로젝트 (프로토타입 모드 최초 1회 시딩용) |
@@ -28,17 +28,27 @@ python -m http.server 8080
 ```
 HOME (년도 타일) → 분야 타일 → 프로젝트 썸네일 → 상세
                                                   ├ 제안서 / 정량서류 / 기록사진 / 영상
-                                                  └ 기념품 / 공연 / 디자인·시안 / 기타
+                                                  ├ 기념품 / 공연 / 디자인·시안 / 기타
+                                                  └ 현황기록 (파일 없는 진행 메모, 타임라인)
 ```
 
 검색창에 카테고리명(예: `기념품`)을 입력하면 전 프로젝트의 해당 카테고리 자료가 나열됩니다.
+
+관리자 콘솔 `#/dashboard` 는 프로젝트별 카테고리 업로드 진행률(현황기록·기타 제외)과 최근 현황기록, 승인 대기 구성원을 한 화면에 보여줍니다.
 
 ## 저장 모드
 
 | 모드 | 조건 | 로그인 | 데이터 위치 |
 |---|---|---|---|
-| 프로토타입 | `config.js` 비어 있음 (기본) | `admin@wellbi.co.kr / admin1234` | 브라우저 IndexedDB — 다른 PC와 공유 안 됨 |
-| **Google Drive** | `config.js` 세 값 입력 | 회사 Google 계정 | 공유 드라이브 폴더 — 전 구성원 공유 |
+| 프로토타입 | `config.js` 비어 있음 | `admin@wellbi.co.kr / admin1234` | 브라우저 IndexedDB — 다른 PC와 공유 안 됨 |
+| **Google Drive** (현재) | `config.js` 세 값 입력됨 | 회사 공용 Google 계정 | 공용 계정 Drive 의 `WELLBI Archive` 폴더 |
+
+### 현재 운영 구성 (2026-10 확정)
+
+- 회사 메일(`@wellbi.kr`)은 Outlook 이라 Google 로그인에 쓸 수 없음 → **회사 공용 Google 계정 1개**(`wellbi.company@gmail.com`)로 Cloud 프로젝트·Drive 폴더·관리자 로그인을 모두 운영
+- Cloud 프로젝트 `wellbin` / OAuth 앱은 **외부(테스트)** 상태 → **OAuth 동의 화면 → 대상 → 테스트 사용자**에 등록된 Google 계정만 로그인 가능. 공용 계정이 등록되어 있어야 함
+- `ALLOWED_DOMAIN` 은 비움, `BOOTSTRAP_ADMIN` = 공용 계정. 다른 Google 계정으로 로그인하면 거부됨 (추가하려면 테스트 사용자 등록 + 관리자 → 구성원 직접 추가)
+- 전원이 같은 계정으로 로그인하므로 **"누가 올렸는지"는 기록되지 않음**. 필요 시 현황기록 본문에 작성자 이름을 적는 방식으로 운영
 
 ## Google Drive 전환 절차
 
@@ -46,7 +56,8 @@ HOME (년도 타일) → 분야 타일 → 프로젝트 썸네일 → 상세
 
 1. 새 프로젝트 생성 (예: `wellbi-archive`)
 2. **API 및 서비스 → 라이브러리** → `Google Drive API` 사용 설정
-3. **OAuth 동의 화면** → 사용자 유형 **내부(Internal)** → 앱 이름 `WELLBI Archive`, 지원 이메일 입력 → 저장
+3. **OAuth 동의 화면**(= Google 인증 플랫폼) → 시작하기 → 앱 이름 `WELLBI Archive`, 지원 이메일 입력
+   - 사용자 유형: Google Workspace 계정이면 **내부**, 일반 Gmail 이면 **외부** → 외부인 경우 **대상 → 테스트 사용자**에 로그인할 계정을 등록해야 함
    - 범위(Scopes)는 따로 추가하지 않아도 됨 (코드에서 요청)
 4. **사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID**
    - 유형: **웹 애플리케이션**
@@ -69,15 +80,16 @@ HOME (년도 타일) → 분야 타일 → 프로젝트 썸네일 → 상세
 GOOGLE_CLIENT_ID:     "xxxx.apps.googleusercontent.com",
 GOOGLE_API_KEY:       "AIza...",
 DRIVE_ROOT_FOLDER_ID: "1AbC...",
-ALLOWED_DOMAIN:       "wellbi.kr",     // 이 도메인 계정은 첫 로그인 시 자동 구성원 등록
-BOOTSTRAP_ADMIN:      "bin@wellbi.kr", // 최초 관리자
+ALLOWED_DOMAIN:       "",              // Workspace 도메인이 있으면 입력 (첫 로그인 시 자동 가입 신청)
+BOOTSTRAP_ADMIN:      "wellbi.company@gmail.com", // 최초 관리자 (공용 계정)
 ```
 
 저장 후 `admin.html` 을 열면 Google 로그인 버튼이 나타납니다. 첫 로그인 시 `members.json` 이 자동 생성됩니다.
 
 ### 4. 호스팅
 
-GitHub → 이 저장소 **Settings → Pages → Branch: main / (root)** → `https://wellbibin.github.io/wellbi/`
+GitHub Pages 활성화됨 → **https://wellbibin.github.io/wellbi/** (브랜치 `main` / root, 푸시 후 1~2분 내 반영)
+공개 사이트: `/wellbi/` · 관리자 콘솔: `/wellbi/admin.html`
 (1단계의 승인된 원본·리퍼러에 이 주소가 포함되어 있어야 함)
 
 ## Drive 폴더 구조 (자동 생성)
@@ -106,7 +118,9 @@ WELLBI Archive/
 
 ## 결정 사항
 
-- 저장소: Google Drive (비용 0, 회사 계정 로그인, 원본·사이트용 이원화 불필요)
+- 저장소: Google Drive (비용 0, 원본·사이트용 이원화 불필요). 무료 15GB 소진 시 공용 계정만 Google One 으로 확장 — 코드 변경 없음
+- 계정: 회사 공용 Google 계정 1개 (회사 메일이 Outlook 이라 Google 로그인 불가). 2단계 인증·복구 연락처는 회사 관리자 것으로 설정
+- 구성원 관리: 승인제 가입 기능은 유지되지만 공용 계정 운영에서는 사실상 사용하지 않음. 계정을 추가하려면 Cloud Console 테스트 사용자 등록이 선행되어야 함
 - 영상: YouTube 비공개(unlisted) 링크 권장 (Drive 업로드 영상도 미리보기 재생은 가능)
 - 이미지: 업로드 시 브라우저에서 표시용 2000px + 썸네일 640px 자동 생성, 원본은 올리지 않음
 - 공개 사이트는 API 키로 `index.json` 하나만 읽음 → 로그인 없이 빠르게 로드
