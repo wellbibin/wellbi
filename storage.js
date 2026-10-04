@@ -30,7 +30,7 @@
        members.json                       ← 관리자 콘솔 접근 허용 목록
        <연도>/<분야>/<프로젝트명>/
           project.json                    ← 프로젝트 메타 원본
-          제안서/ 정량서류/ 기록사진/ 영상/ 기념품/ 공연/ 디자인·시안/ 기타/ _thumb/
+          제안서/ 정량서류/ 결과보고서/ 대표사진/ 영상/ 기념품/ 공연/ 디자인·시안/ 기타/ _thumb/
 
    자료 키 형식
      drive:img:<fileId>   이미지 (lh3 CDN 으로 표시, 공개 공유 필요)
@@ -532,9 +532,21 @@ const DriveStore = (() => {
     const p = idx.projects.find((x) => x.id === opts.projectId);
     if (!p) return ensureFolder(root, "_uploads");
     const pf = await ensureProjectFolder(p);
+    if (opts.section === "_thumb") return ensureFolder(pf, "_thumb");
     const cat = typeof CATEGORIES !== "undefined" && CATEGORIES.find((c) => c.id === opts.section);
-    return ensureFolder(pf, opts.section === "_thumb" ? "_thumb" : safeName(cat?.label || opts.section || "기타"));
+    // 라벨이 바뀐 카테고리: 기존 폴더명으로 이미 만들어진 프로젝트는 그 폴더를 계속 사용 (자료 분산 방지)
+    const legacy = LEGACY_FOLDER_NAMES[opts.section];
+    if (legacy) {
+      const old = await findChild(pf, legacy, FOLDER);
+      if (old) {
+        folderCache.set(pf + "/" + legacy, old.id);
+        return old.id;
+      }
+    }
+    return ensureFolder(pf, safeName(cat?.label || opts.section || "기타"));
   }
+  // 카테고리 id → 과거 라벨(=Drive 폴더명). 라벨을 변경할 때 여기에 이전 이름을 추가
+  const LEGACY_FOLDER_NAMES = { photo: "기록사진" };
   const stripExt = (n) => n.replace(/\.[^.]+$/, "");
 
   async function uploadFile(file, opts = {}) {
@@ -564,9 +576,10 @@ const DriveStore = (() => {
   }
 
   // 키 → 표시 URL. 공개 공유된 파일만 로그인 없이 표시됨.
-  async function resolveUrl(key) {
+  //   opts.full: 이미지 원본 크기 (lh3 CDN 은 기본 1600px 로 축소해 주므로, 라이트박스는 =s0 으로 업로드 원본 2000px 요청)
+  async function resolveUrl(key, opts = {}) {
     if (!key) return "";
-    if (key.startsWith("drive:img:")) return `https://lh3.googleusercontent.com/d/${key.slice(10)}`;
+    if (key.startsWith("drive:img:")) return `https://lh3.googleusercontent.com/d/${key.slice(10)}${opts.full ? "=s0" : ""}`;
     if (key.startsWith("drive:thumb:")) return `https://drive.google.com/thumbnail?id=${key.slice(12)}&sz=w640`;
     if (key.startsWith("drive:file:")) return `https://drive.google.com/file/d/${key.slice(11)}/preview`;
     if (key.startsWith("local:")) return LocalStore.resolveUrl(key); // 로컬 → Drive 이관 전 잔존 데이터

@@ -75,7 +75,7 @@ const matchCategory = (q) => {
   return (
     CATEGORIES.find((c) => {
       const label = c.label.replace(/\s/g, "").toLowerCase();
-      // "기념품" === "기념품", "사진" ⊂ "기록사진", "디자인" ⊂ "디자인·시안", 영문 id도 허용
+      // "기념품" === "기념품", "사진" ⊂ "대표사진", "디자인" ⊂ "디자인·시안", 영문 id도 허용
       return label === s || label.includes(s) || c.id === s || label.split(/[·/]/).some((part) => part === s);
     }) || null
   );
@@ -369,6 +369,13 @@ function viewProject(id) {
   // 자료 카드 → 라이트박스
   app.querySelectorAll(".acard").forEach((b) => b.addEventListener("click", () => openLightbox(Number(b.dataset.idx))));
 
+  // 메인 포스터(hero) 클릭 → 라이트박스로 크게 보기 (자료 목록 순회에는 포함하지 않음)
+  const heroImg = app.querySelector(".hero-img img");
+  if (heroImg && p.thumbnail) {
+    heroImg.style.cursor = "zoom-in";
+    heroImg.addEventListener("click", () => openLightboxSingle({ type: "image", section: "design", title: p.title, desc: "메인 시안", src: p.thumbnail, thumb: p.thumbnail }));
+  }
+
   window.scrollTo(0, 0);
 }
 
@@ -404,7 +411,8 @@ async function renderLightbox() {
   // 샘플 데이터의 assets/ 경로는 실제 파일이 없으므로 "미등록"으로 취급
   const isSamplePath = /^assets\//.test(rawSrc) && !(await urlExists(rawSrc));
   const missing = !rawSrc || rawSrc === "#" || isSamplePath;
-  const src = missing ? "" : await Store.resolveUrl(rawSrc);
+  // 이미지는 원본 해상도로 (lh3 기본 1600px 축소본 대신 업로드본 2000px)
+  const src = missing ? "" : await Store.resolveUrl(rawSrc, { full: a.type === "image" });
   const thumb = await Store.resolveUrl(assetThumbKey(a));
   const isDriveFile = rawSrc.startsWith("drive:file:"); // Drive 미리보기(iframe)로 표시되는 PDF/영상
   const dl = Store.downloadUrl ? Store.downloadUrl(rawSrc) : src;
@@ -414,7 +422,8 @@ async function renderLightbox() {
   if (missing) {
     stage = `<div class="lb-link">${thumb ? `<img src="${thumb}" alt="" style="max-height:60%;opacity:.5">` : ""}<span>원본 파일이 아직 등록되지 않았습니다.</span><small>관리자 → 프로젝트 편집에서 파일을 업로드하면 여기서 바로 볼 수 있습니다.</small></div>`;
   } else if (a.type === "image") {
-    stage = `<img src="${src}" alt="${esc(a.title)}">`;
+    // 클릭하면 실제 크기(1:1)로 확대 → 스크롤/드래그로 세부 확인, 다시 클릭하면 화면 맞춤
+    stage = `<img src="${src}" alt="${esc(a.title)}" class="lb-zoomable" title="클릭하여 확대/축소">`;
   } else if (a.type === "video") {
     const yt = youtubeId(src);
     stage = yt
@@ -435,6 +444,22 @@ async function renderLightbox() {
   }
 
   lbStage.innerHTML = stage;
+  lbStage.classList.remove("zoomed");
+  // 이미지 클릭 → 실제 크기로 확대(클릭 지점 중심), 다시 클릭 → 화면 맞춤
+  const zi = lbStage.querySelector(".lb-zoomable");
+  if (zi) {
+    zi.addEventListener("click", (e) => {
+      const zoomed = lbStage.classList.toggle("zoomed");
+      if (zoomed) {
+        const rx = e.offsetX / zi.clientWidth;
+        const ry = e.offsetY / zi.clientHeight;
+        requestAnimationFrame(() => {
+          lbStage.scrollLeft = rx * zi.naturalWidth - lbStage.clientWidth / 2;
+          lbStage.scrollTop = ry * zi.naturalHeight - lbStage.clientHeight / 2;
+        });
+      }
+    });
+  }
   // <video> 재생 실패 시 안내 표시
   const v = lbStage.querySelector("video");
   if (v) {
@@ -459,10 +484,21 @@ function openLightbox(i) {
   lb.hidden = false;
   document.body.style.overflow = "hidden";
 }
+// 단일 자산(메인 포스터 등)만 라이트박스로 — 닫으면 원래 자료 목록 복원
+let savedAssets = null;
+function openLightboxSingle(asset) {
+  savedAssets = currentAssets;
+  currentAssets = [asset];
+  openLightbox(0);
+}
 function closeLightbox() {
   lb.hidden = true;
   lbStage.innerHTML = ""; // 영상 정지
   document.body.style.overflow = "";
+  if (savedAssets) {
+    currentAssets = savedAssets;
+    savedAssets = null;
+  }
 }
 function stepLightbox(d) {
   lbIndex = (lbIndex + d + currentAssets.length) % currentAssets.length;

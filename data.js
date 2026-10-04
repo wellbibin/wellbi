@@ -28,7 +28,7 @@ const CATEGORIES = [
   { id: "proposal",    label: "제안서",     icon: "📄" },
   { id: "quantity",    label: "정량서류",   icon: "📊" },
   { id: "report",      label: "결과보고서", icon: "📑" },
-  { id: "photo",       label: "기록사진",   icon: "📷" },
+  { id: "photo",       label: "대표사진",   icon: "📷" },
   { id: "video",       label: "영상",       icon: "🎬" },
   { id: "souvenir",    label: "기념품",     icon: "🎁" },
   { id: "performance", label: "공연",       icon: "🎭" },
