@@ -326,9 +326,10 @@ function viewProject(id) {
     })
     .join("");
 
+  // 탭: 전체 + 자료가 있는 카테고리 (클릭 시 해당 카테고리만 표시)
   const tabs =
-    `<button class="tab active" data-target="top">전체<span class="cnt">${sections.reduce((n, s) => n + s.items.length, 0)}</span></button>` +
-    sections.map(({ c, items }) => `<button class="tab" data-target="sec-${c.id}">${c.icon} ${esc(c.label)}<span class="cnt">${items.length}</span></button>`).join("");
+    `<button class="tab active" data-filter="all">전체<span class="cnt">${sections.reduce((n, s) => n + s.items.length, 0)}</span></button>` +
+    sections.map(({ c, items }) => `<button class="tab" data-filter="${c.id}">${c.icon} ${esc(c.label)}<span class="cnt">${items.length}</span></button>`).join("");
 
   app.innerHTML = `
     ${crumbs([
@@ -356,13 +357,16 @@ function viewProject(id) {
     ${sectionsHtml || `<div class="empty">등록된 자료가 없습니다.</div>`}
   `;
 
-  // 탭 → 스크롤
+  // 탭 → 필터: "전체"는 모든 섹션, 카테고리 탭은 해당 섹션만 표시
+  const tabsEl = app.querySelector(".tabs");
   app.querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => {
       app.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
       t.classList.add("active");
-      const el = document.getElementById(t.dataset.target);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      const f = t.dataset.filter;
+      app.querySelectorAll(".section").forEach((s) => (s.hidden = f !== "all" && s.id !== "sec-" + f));
+      // 탭이 화면 밖이면 탭 위치까지만 올림
+      if (tabsEl.getBoundingClientRect().top < 0) tabsEl.scrollIntoView({ behavior: "smooth", block: "start" });
     })
   );
 
