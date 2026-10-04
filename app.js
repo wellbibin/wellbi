@@ -153,13 +153,26 @@ function viewYears() {
   const tiles = years
     .map((y) => {
       const items = all.filter((p) => p.year === y);
-      return boardTile(`#/year/${y}`, String(y), items.length);
+      const fields = [...new Set(items.map((p) => p.field))];
+      const files = items.reduce((n, p) => n + (p.assets || []).filter((a) => a.type !== "note").length, 0);
+      const cover = items.find((p) => p.thumbnail)?.thumbnail || "";
+      return `
+        <a class="ytile" href="#/year/${y}">
+          ${cover ? `<img class="ytile-bg" data-src="${cover}" alt="">` : ""}
+          <div class="ytile-year">${y}</div>
+          <div class="ytile-foot">
+            <div class="ytile-stat"><b>${items.length}</b><span>PROJECTS</span></div>
+            <div class="ytile-meta">${fields.map((f) => `<span>${esc(fieldLabel(f))}</span>`).join("")}</div>
+            ${files ? `<div class="ytile-files">자료 ${files}건</div>` : ""}
+          </div>
+        </a>`;
     })
     .join("");
 
   app.innerHTML =
     pageHead("WELLBI Archive", `연도를 선택하세요 · 총 ${all.length}개 프로젝트`) +
-    `<div class="board">${tiles}</div>`;
+    `<div class="yboard">${tiles}</div>`;
+  hydrateImgs();
 }
 
 /* ---------- 2단계: 분야 보드 (연도 내) ---------- */
