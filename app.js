@@ -18,14 +18,32 @@ const fieldLabel = (id) => (FIELDS.find((f) => f.id === id) || {}).label || id;
 const catById = (id) => CATEGORIES.find((c) => c.id === id) || { id, label: id, icon: "📁" };
 const esc = (s = "") => String(s).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
 
-// Store(IndexedDB → 추후 Google Drive)에서 로드한 공개 프로젝트 목록. 로드 전에는 data.js 샘플 사용
-let DATA = typeof PROJECTS !== "undefined" ? PROJECTS : [];
+// Store(Google Drive / IndexedDB)에서 로드한 공개 프로젝트 목록.
+// Drive 모드: 네트워크 응답(약 1초) 전까지 빈 화면이 되지 않도록 마지막 성공 데이터를 localStorage 에 캐시해 즉시 표시,
+//            응답 도착 후 최신 데이터로 교체. 프로토타입 모드: data.js 샘플 사용.
+const DATA_CACHE_KEY = "wellbi-public-index";
+let DATA = [];
+try {
+  const cached = typeof CONFIG !== "undefined" && CONFIG.DRIVE_ENABLED ? JSON.parse(localStorage.getItem(DATA_CACHE_KEY) || "null") : null;
+  DATA = Array.isArray(cached) ? cached : typeof CONFIG !== "undefined" && CONFIG.DRIVE_ENABLED ? [] : typeof PROJECTS !== "undefined" ? PROJECTS : [];
+} catch {
+  DATA = [];
+}
+let dataLoading = true;
 async function loadData() {
   try {
     await Store.init();
     DATA = (await Store.getProjects()).filter((p) => !p.hidden);
+    if (typeof CONFIG !== "undefined" && CONFIG.DRIVE_ENABLED) {
+      try {
+        localStorage.setItem(DATA_CACHE_KEY, JSON.stringify(DATA));
+      } catch {}
+    }
   } catch (e) {
-    console.warn("Store 로드 실패, data.js 샘플 사용", e);
+    console.warn("Store 로드 실패", e);
+    if (!DATA.length && typeof PROJECTS !== "undefined" && !(typeof CONFIG !== "undefined" && CONFIG.DRIVE_ENABLED)) DATA = PROJECTS;
+  } finally {
+    dataLoading = false;
   }
 }
 
@@ -170,8 +188,12 @@ function viewYears() {
     .join("");
 
   app.innerHTML =
-    pageHead("WELLBI Archive", `연도를 선택하세요 · 총 ${all.length}개 프로젝트`) +
-    `<div class="yboard">${tiles}</div>`;
+    pageHead("WELLBI Archive", dataLoading && !all.length ? "자료를 불러오는 중…" : `연도를 선택하세요 · 총 ${all.length}개 프로젝트`) +
+    (tiles
+      ? `<div class="yboard">${tiles}</div>`
+      : dataLoading
+        ? `<div class="yboard">${[0, 1, 2].map(() => `<div class="ytile ytile-skeleton"></div>`).join("")}</div>`
+        : `<div class="empty">등록된 프로젝트가 없습니다.</div>`);
   hydrateImgs();
 }
 
@@ -545,6 +567,12 @@ function render() {
     searchInput.value = "";
   }
 
+  // 데이터 로드 전 딥링크(상세/연도 등) 진입 시 "없음" 대신 로딩 표시
+  if (dataLoading && !DATA.length && seg.length) {
+    app.innerHTML = `<div class="empty">자료를 불러오는 중…</div>`;
+    return;
+  }
+
   if (seg[0] === "project" && seg[1]) viewProject(seg[1]);
   else if (seg[0] === "search") viewSearch();
   else if (seg[0] === "year" && seg[1] && seg[2] === "field" && seg[3]) viewProjectsIn(seg[1], seg[3]);
@@ -558,11 +586,12 @@ function render() {
   const years = DATA.map((p) => p.year);
   $("#footerStats").textContent = DATA.length
     ? `프로젝트 ${DATA.length}건 · 자료 ${totalAssets}건 · ${Math.min(...years)}–${Math.max(...years)}`
-    : "등록된 프로젝트가 없습니다";
+    : dataLoading
+      ? "불러오는 중…"
+      : "등록된 프로젝트가 없습니다";
 }
 
 window.addEventListener("hashchange", render);
-(async () => {
-  await loadData();
-  render();
-})();
+// 1) 캐시(또는 로딩 스켈레톤)로 즉시 그리고 2) Drive 응답이 오면 최신 데이터로 다시 그림
+render();
+loadData().then(render);
