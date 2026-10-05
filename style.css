@@ -179,8 +179,8 @@ img { display: block; max-width: 100%; }
 }
 .ytile-year {
   position: relative; z-index: 1;
-  /* 타일 폭 기준: 4자리 숫자가 패딩 안에 꼭 맞게 (폭 320px → 약 147px). 컨테이너 쿼리 미지원 브라우저용 폴백 포함 */
-  font-size: 104px; font-size: 46cqw; font-weight: 900; line-height: .9; letter-spacing: -.05em;
+  /* 타일 폭 기준: 4자리 숫자가 패딩 안에 꼭 맞게 (폭 320px → 약 128px, 시스템 폰트 폭 차이 대비 여유 확보). 컨테이너 쿼리 미지원 브라우저용 폴백 포함 */
+  font-size: 92px; font-size: 40cqw; font-weight: 900; line-height: .9; letter-spacing: -.05em;
   font-variant-numeric: tabular-nums;
   background: linear-gradient(180deg, #ffffff 0%, #b9cdf2 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -198,7 +198,7 @@ img { display: block; max-width: 100%; }
 @media (max-width: 720px) {
   .yboard { grid-template-columns: 1fr; }
   .ytile { min-height: 220px; }
-  .ytile-year { font-size: 104px; font-size: 46cqw; }
+  .ytile-year { font-size: 92px; font-size: 40cqw; }
 }
 
 /* ---------- 보드 타일 (분야) ---------- */
