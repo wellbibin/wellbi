@@ -63,18 +63,24 @@ img { display: block; max-width: 100%; }
 .nav a:hover { color: var(--text); background: var(--bg-2); }
 .nav a.active { color: #fff; background: var(--accent); }
 
+/* 검색: 기본은 돋보기 아이콘만, 클릭/포커스 또는 입력값이 있으면 입력창 확장 */
 .search {
   margin-left: auto;
   display: flex; align-items: center; gap: 8px;
   background: var(--bg-2); border: 1px solid var(--line);
-  border-radius: 10px; padding: 0 12px; height: 40px; width: 320px;
-  color: var(--muted);
+  border-radius: 10px; padding: 0 11px; height: 40px; width: 40px;
+  color: var(--muted); cursor: pointer; overflow: hidden;
+  transition: width .25s ease, border-color .2s, background .2s;
 }
-.search:focus-within { border-color: var(--accent); }
+.search svg { flex: none; }
+.search:hover { border-color: #34425b; color: var(--text); }
+.search:focus-within, .search.open { width: 320px; border-color: var(--accent); cursor: text; color: var(--muted); }
 .search input {
-  flex: 1; background: transparent; border: 0; outline: 0;
+  flex: 1; min-width: 0; background: transparent; border: 0; outline: 0;
   color: var(--text); font-size: 14px; font-family: inherit;
+  opacity: 0; transition: opacity .15s;
 }
+.search:focus-within input, .search.open input { opacity: 1; }
 .search input::placeholder { color: var(--muted); }
 
 /* ---------- Layout ---------- */
@@ -155,62 +161,41 @@ img { display: block; max-width: 100%; }
 .crumbs .cur { color: var(--text); font-weight: 600; }
 .crumbs .sep { opacity: .5; }
 
-/* ---------- 연도 타일 (인포그래픽: 큰 숫자 + 요약) ---------- */
-.yboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 22px; }
+/* ---------- 연도 타일 (심플: 큰 연도 + 프로젝트 수) ---------- */
+.yboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 22px; }
 .ytile {
-  position: relative; min-height: 300px; aspect-ratio: 4 / 3;
+  position: relative; min-height: 260px;
   background: linear-gradient(160deg, #1a2436 0%, #0f1521 100%);
   border: 1px solid var(--line); border-radius: 22px; overflow: hidden;
   display: flex; flex-direction: column; justify-content: space-between;
-  padding: 24px 28px 24px;
+  padding: 26px 30px 26px;
   transition: transform .25s, border-color .25s, box-shadow .25s;
 }
 .ytile:hover { transform: translateY(-5px); border-color: var(--accent); box-shadow: var(--shadow); }
-/* 배경: 그해 첫 프로젝트 대표 이미지를 흐리게 */
-.ytile-bg {
-  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-  opacity: .10; filter: saturate(.4) blur(3px) brightness(.9); transform: scale(1.08);
-  transition: opacity .3s, transform .5s;
-  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,1) 0%, rgba(0,0,0,.4) 50%, rgba(0,0,0,0) 78%);
-  mask-image: linear-gradient(180deg, rgba(0,0,0,1) 0%, rgba(0,0,0,.4) 50%, rgba(0,0,0,0) 78%);
-}
-.ytile:hover .ytile-bg { opacity: .18; transform: scale(1.12); }
 .ytile::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  background:
-    radial-gradient(ellipse at 20% 0%, rgba(79,140,255,.22), transparent 55%),
-    linear-gradient(180deg, rgba(15,21,33,0) 40%, rgba(15,21,33,.85) 100%);
+  background: radial-gradient(ellipse at 20% 0%, rgba(79,140,255,.22), transparent 55%);
 }
-/* 연도: 타일 폭에 맞춰 꽉 차게 */
 .ytile-year {
   position: relative; z-index: 1;
-  font-size: clamp(88px, 11vw, 150px); font-weight: 900; line-height: .9; letter-spacing: -.05em;
+  font-size: clamp(88px, 10vw, 140px); font-weight: 900; line-height: .9; letter-spacing: -.05em;
   font-variant-numeric: tabular-nums;
   background: linear-gradient(180deg, #ffffff 0%, #b9cdf2 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
-  text-shadow: none;
 }
-.ytile-foot { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px; }
-.ytile-stat { display: flex; align-items: baseline; gap: 8px; }
+.ytile-stat { position: relative; z-index: 1; display: flex; align-items: baseline; gap: 8px; }
 .ytile-stat b { font-size: 40px; font-weight: 900; color: var(--accent-2); letter-spacing: -.03em; line-height: 1; }
 .ytile-stat span { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .14em; }
-.ytile-meta { display: flex; flex-wrap: wrap; gap: 6px; }
-.ytile-meta span {
-  font-size: 11px; font-weight: 600; color: #c9d6ee;
-  background: rgba(79,140,255,.14); border: 1px solid rgba(79,140,255,.28);
-  padding: 3px 9px; border-radius: 999px;
-}
-.ytile-files { font-size: 12px; color: var(--muted); }
 /* 첫 로드 스켈레톤 */
 .ytile-skeleton { pointer-events: none; animation: ytile-pulse 1.4s ease-in-out infinite; }
 .ytile-skeleton::before {
-  content: ""; position: absolute; left: 28px; top: 24px; width: 60%; height: 34%;
+  content: ""; position: absolute; left: 30px; top: 26px; width: 60%; height: 38%;
   border-radius: 14px; background: rgba(255,255,255,.07);
 }
 @keyframes ytile-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 @media (max-width: 720px) {
   .yboard { grid-template-columns: 1fr; }
-  .ytile { min-height: 240px; aspect-ratio: auto; }
+  .ytile { min-height: 220px; }
   .ytile-year { font-size: 96px; }
 }
 
@@ -428,7 +413,7 @@ img { display: block; max-width: 100%; }
   .header-inner { gap: 12px; padding: 0 14px; }
   .brand-text small { display: none; }
   .nav a { padding: 8px 10px; font-size: 13px; }
-  .search { width: auto; flex: 1; min-width: 0; }
+  .search:focus-within, .search.open { width: min(320px, 60vw); }
   .main { padding: 20px 14px 60px; }
   .hero h1 { font-size: 22px; }
   .lb-info { flex-direction: column; align-items: flex-start; }

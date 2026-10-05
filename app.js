@@ -99,8 +99,14 @@ const matchCategory = (q) => {
   );
 };
 
+// 검색창: 평소엔 돋보기만 → 클릭하면 펼쳐지며 포커스, 입력값이 있는 동안은 펼친 상태 유지
+const searchBox = searchInput.closest(".search");
+const syncSearchOpen = () => searchBox.classList.toggle("open", !!searchInput.value);
+searchBox.addEventListener("click", () => searchInput.focus());
+searchInput.addEventListener("blur", syncSearchOpen);
 searchInput.addEventListener("input", (e) => {
   query = e.target.value.trim();
+  syncSearchOpen();
   if (query) {
     if (location.hash !== "#/search") location.hash = "#/search";
     else render();
@@ -168,21 +174,14 @@ function viewYears() {
   const all = sortedProjects();
   const years = [...new Set(all.map((p) => p.year))];
 
+  // 심플: 연도 + 프로젝트 수만
   const tiles = years
     .map((y) => {
-      const items = all.filter((p) => p.year === y);
-      const fields = [...new Set(items.map((p) => p.field))];
-      const files = items.reduce((n, p) => n + (p.assets || []).filter((a) => a.type !== "note").length, 0);
-      const cover = items.find((p) => p.thumbnail)?.thumbnail || "";
+      const n = all.filter((p) => p.year === y).length;
       return `
         <a class="ytile" href="#/year/${y}">
-          ${cover ? `<img class="ytile-bg" data-src="${cover}" alt="">` : ""}
           <div class="ytile-year">${y}</div>
-          <div class="ytile-foot">
-            <div class="ytile-stat"><b>${items.length}</b><span>PROJECTS</span></div>
-            <div class="ytile-meta">${fields.map((f) => `<span>${esc(fieldLabel(f))}</span>`).join("")}</div>
-            ${files ? `<div class="ytile-files">자료 ${files}건</div>` : ""}
-          </div>
+          <div class="ytile-stat"><b>${n}</b><span>PROJECTS</span></div>
         </a>`;
     })
     .join("");
@@ -565,6 +564,7 @@ function render() {
   if (seg[0] !== "search" && query) {
     query = "";
     searchInput.value = "";
+    syncSearchOpen();
   }
 
   // 데이터 로드 전 딥링크(상세/연도 등) 진입 시 "없음" 대신 로딩 표시
