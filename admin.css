@@ -73,7 +73,7 @@
 .me b { font-size: 14px; }
 .me small { color: var(--muted); font-size: 12px; }
 
-.content { padding: 32px 36px 80px; max-width: 1200px; }
+.content { padding: 32px 36px 80px; max-width: 1400px; }
 .content-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .content-head h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
 .content-head p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
@@ -87,6 +87,7 @@
 }
 .toolbar input { flex: 1; min-width: 200px; }
 
+.table-wrap { overflow-x: auto; } /* 화면이 좁으면 세로로 깨지지 않고 가로 스크롤 */
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .table td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
@@ -95,6 +96,13 @@
 .table .t { font-weight: 700; }
 .table .s { color: var(--muted); font-size: 12px; }
 .table .acts { display: flex; gap: 6px; justify-content: flex-end; }
+/* 줄깨짐 방지: 분야·금액·자료·진행률·상태·버튼은 줄바꿈 금지, 프로젝트명 열만 늘어나며 줄바꿈 */
+.table th, .table td { white-space: nowrap; }
+.table td.ttl { white-space: normal; width: 100%; min-width: 260px; }
+.table td.ttl .t { word-break: keep-all; overflow-wrap: anywhere; }
+.table td.ttl .s { white-space: normal; }
+.table .pill, .table .btn { white-space: nowrap; }
+.table .pct { min-width: 110px; }
 .table th.amt, .table td.amt { text-align: right; white-space: nowrap; }
 .table th.amt small { font-weight: 400; }
 .table td.amt b { font-variant-numeric: tabular-nums; font-weight: 700; }
@@ -104,7 +112,7 @@
 .with-unit { position: relative; display: flex; align-items: center; }
 .with-unit input { width: 100%; padding-right: 54px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: .2px; }
 .with-unit b { position: absolute; right: 12px; font-size: 12px; font-weight: 700; color: var(--muted); pointer-events: none; }
-#f-amount-eok { min-height: 14px; }
+#f-amount-won { min-height: 14px; }
 .pill { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: var(--bg-2); border: 1px solid var(--line); color: var(--muted); }
 .pill.on { color: #4ade80; border-color: rgba(74,222,128,.4); }
 .pill.off { color: #fbbf24; border-color: rgba(251,191,36,.4); }

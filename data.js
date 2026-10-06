@@ -30,6 +30,7 @@ const CATEGORIES = [
   { id: "proposal",    label: "제안서",     icon: "📄" },
   { id: "quantity",    label: "정량서류",   icon: "📊" },
   { id: "report",      label: "결과보고서", icon: "📑" },
+  { id: "certificate", label: "실적증명서", icon: "📜" },
   { id: "photo",       label: "대표사진",   icon: "📷" },
   { id: "video",       label: "영상",       icon: "🎬" },
   { id: "souvenir",    label: "기념품",     icon: "🎁" },
@@ -41,7 +42,24 @@ const CATEGORIES = [
 ];
 
 // 진행률 계산에 포함되는 "필수" 카테고리 (현황기록·기타는 선택이라 제외)
-const REQUIRED_CATEGORIES = ["proposal", "quantity", "report", "photo", "video", "souvenir", "performance", "design"];
+const REQUIRED_CATEGORIES = ["proposal", "quantity", "report", "certificate", "photo", "video", "souvenir", "performance", "design"];
+
+// 계약금액(amount) — 저장·표시 모두 천원 단위 (예: 40,000,000원 → 40000 → "40,000 천원")
+const fmtAmountK = (k) => (k == null ? "" : Number(k).toLocaleString("ko-KR") + " 천원");
+
+// 옛 구조(internal.amount)는 억원(1.362) 또는 원(400000000) 단위가 섞여 있어 천원으로 추정 변환한다.
+//   ≥ 1,000,000  → 원 단위로 보고 /1000      (400,000,000원 → 400,000천원)
+//   < 1,000      → 억원 단위로 보고 ×100,000 (1.362억 → 136,200천원)
+//   그 사이      → 이미 천원
+// 새 구조의 amount 에는 적용하지 않음 (항상 천원 그대로).
+function legacyAmountToK(v) {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[^\d.]/g, ""));
+  if (!isFinite(n) || n <= 0) return null;
+  if (n >= 1000000) return Math.round(n / 1000);
+  if (n < 1000) return Math.round(n * 100000);
+  return Math.round(n);
+}
 
 // 썸네일이 아직 없을 때 사용하는 플레이스홀더 생성기 (실제 운영 시 실제 이미지 경로로 교체)
 const ph = (text, bg = "1e293b", fg = "e2e8f0", w = 800, h = 500) =>

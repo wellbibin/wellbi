@@ -269,6 +269,7 @@ img { display: block; max-width: 100%; }
 .kv { display: grid; grid-template-columns: 80px 1fr; row-gap: 6px; column-gap: 12px; font-size: 14px; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; }
+.kv dd.amount { font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .stat {

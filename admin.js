@@ -15,14 +15,10 @@ const esc = (s = "") => String(s).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<
 const fieldLabel = (id) => (FIELDS.find((f) => f.id === id) || {}).label || id;
 const catById = (id) => CATEGORIES.find((c) => c.id === id) || { id, label: id, icon: "📁" };
 
-/* 계약금액 — 저장 단위는 억원(internal.amount), 화면 입력·표시 단위는 천원 (1억원 = 100,000천원) */
-const amountK = (p) => (p?.internal?.amount == null || p.internal.amount === "" ? null : Math.round(Number(p.internal.amount) * 100000));
+/* 계약금액 — 저장·입력·표시 모두 천원 단위 (p.amount, 공개 필드). 예: 40,000,000원 → 40000 → "40,000 천원" */
+const amountK = (p) => (p?.amount == null || p.amount === "" ? null : Number(p.amount));
 const fmtK = (k) => Number(k).toLocaleString("ko-KR");
-const fmtEok = (k) => {
-  const eok = k / 100000;
-  if (eok >= 1) return eok.toLocaleString("ko-KR", { maximumFractionDigits: 2 }) + "억원";
-  return Math.round(k / 10).toLocaleString("ko-KR") + "만원";
-};
+const fmtWon = (k) => (k * 1000).toLocaleString("ko-KR") + "원"; // 입력 확인용 원 단위 환산
 const parseK = (s) => {
   const digits = String(s || "").replace(/[^\d]/g, "");
   return digits === "" ? null : Number(digits);
@@ -321,7 +317,7 @@ async function viewProjects() {
       <select id="fy"><option value="">전체 연도</option>${years.map((y) => `<option>${y}</option>`).join("")}</select>
       <select id="ff"><option value="">전체 분야</option>${FIELDS.map((f) => `<option value="${f.id}">${esc(f.label)}</option>`).join("")}</select>
     </div>
-    <div class="card" style="padding:0 6px"><table class="table">
+    <div class="card table-wrap" style="padding:0 6px"><table class="table">
       <thead><tr><th></th><th>프로젝트</th><th>연도</th><th>분야</th><th class="amt">계약금액 <small>(천원)</small></th><th>자료</th><th>진행률</th><th>상태</th><th></th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>`;
@@ -338,7 +334,7 @@ async function viewProjects() {
             return `
           <tr>
             <td><img class="thumb" data-src="${p.thumbnail || ""}" alt=""></td>
-            <td><div class="t">${esc(p.title)}</div><div class="s">${esc(p.client || "")} · ${esc(p.period || "")}</div></td>
+            <td class="ttl"><div class="t">${esc(p.title)}</div><div class="s">${esc(p.client || "")} · ${esc(p.period || "")}</div></td>
             <td>${p.year}</td>
             <td><span class="pill">${esc(fieldLabel(p.field))}</span></td>
             <td class="amt">${amountK(p) != null ? `<b>${fmtK(amountK(p))}</b><span>천원</span>` : `<span>-</span>`}</td>
@@ -429,9 +425,9 @@ async function viewEdit(id) {
           <h2>기본 정보</h2>
           <div class="row c2" style="margin-bottom:14px">
             <label class="f" style="grid-column:1/-1"><span>프로젝트명 *</span><input id="f-title" value="${esc(p.title)}" placeholder="예) 2025 글로벌 바이오 헬스 포럼"></label>
-            <label class="f" style="grid-column:1/-1"><span>계약금액 <span class="hint">(천원, VAT포함 · 관리자만 열람, 공개 사이트 비노출)</span></span>
-              <div class="with-unit"><input id="f-amount" inputmode="numeric" autocomplete="off" value="${amountK(p) != null ? fmtK(amountK(p)) : ""}" placeholder="예) 136,200"><b>천원</b></div>
-              <span class="hint" id="f-amount-eok">${amountK(p) != null ? "= " + fmtEok(amountK(p)) : "숫자만 입력하세요. 1억원 = 100,000천원"}</span>
+            <label class="f" style="grid-column:1/-1"><span>계약금액 <span class="hint">(천원 단위, VAT포함 · 상세 화면에 표시)</span></span>
+              <div class="with-unit"><input id="f-amount" inputmode="numeric" autocomplete="off" value="${amountK(p) != null ? fmtK(amountK(p)) : ""}" placeholder="예) 40,000"><b>천원</b></div>
+              <span class="hint" id="f-amount-won">${amountK(p) != null ? "= " + fmtWon(amountK(p)) : "천원 단위 숫자만 입력하세요. 예) 40,000,000원 → 40,000"}</span>
             </label>
             <label class="f"><span>연도 *</span><input id="f-year" type="number" min="2000" max="2100" value="${p.year}"></label>
             <label class="f"><span>분야 *</span><select id="f-field">${FIELDS.map((f) => `<option value="${f.id}" ${f.id === p.field ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</select></label>
@@ -440,15 +436,6 @@ async function viewEdit(id) {
             <label class="f" style="grid-column:1/-1"><span>장소</span><input id="f-venue" value="${esc(p.venue)}" placeholder="예) 코엑스 오디토리움 (서울)"></label>
             <label class="f" style="grid-column:1/-1"><span>프로젝트 개요 <span class="hint">(영업용 요약 2~3문장)</span></span><textarea id="f-summary">${esc(p.summary)}</textarea></label>
             <label class="f" style="grid-column:1/-1"><span>태그 <span class="hint">(쉼표로 구분)</span></span><input id="f-tags" value="${esc((p.tags || []).join(", "))}" placeholder="하이브리드, 국제포럼, 갈라디너"></label>
-          </div>
-        </div>
-
-        <div class="card">
-          <h2>내부 정보 <small>관리자 콘솔에서만 보이며 공개 사이트에는 표시되지 않습니다</small></h2>
-          <div class="row c2">
-            <label class="f"><span>담당부서</span><input id="f-dept" value="${esc(p.internal?.dept || "")}" placeholder="예) 기획본부 (기획2팀)"></label>
-            <label class="f"><span>유형 <span class="hint">(실적리스트 기준)</span></span><input id="f-ptype" value="${esc(p.internal?.type || "")}" placeholder="예) 행사 / 마케팅·홍보"></label>
-            <label class="f" style="grid-column:1/-1"><span>비고</span><input id="f-note" value="${esc(p.internal?.note || "")}" placeholder="예) 나라장터 발급가능 / 피엔비 수행"></label>
           </div>
         </div>
 
@@ -532,16 +519,16 @@ async function viewEdit(id) {
   /* --- 입력 변경 감지 --- */
   $$("input, select, textarea", content).forEach((el) => el.addEventListener("input", () => setDirty()));
 
-  /* --- 계약금액(천원): 숫자만 허용, 입력 중 천 단위 쉼표 + 억원 환산 미리보기 --- */
+  /* --- 계약금액(천원): 숫자만 허용, 입력 중 천 단위 쉼표 + 원 단위 환산 미리보기 --- */
   const amtEl = $("#f-amount");
-  const amtEok = $("#f-amount-eok");
+  const amtWon = $("#f-amount-won");
   const refreshAmount = () => {
     const k = parseK(amtEl.value);
     const caretFromEnd = amtEl.value.length - (amtEl.selectionStart ?? amtEl.value.length);
     amtEl.value = k == null ? "" : fmtK(k);
     const pos = Math.max(0, amtEl.value.length - caretFromEnd);
     try { amtEl.setSelectionRange(pos, pos); } catch {}
-    amtEok.textContent = k == null ? "숫자만 입력하세요. 1억원 = 100,000천원" : "= " + fmtEok(k);
+    amtWon.textContent = k == null ? "천원 단위 숫자만 입력하세요. 예) 40,000,000원 → 40,000" : "= " + fmtWon(k);
   };
   amtEl.addEventListener("input", refreshAmount);
   amtEl.addEventListener("blur", refreshAmount);
@@ -606,17 +593,11 @@ async function viewEdit(id) {
     p.venue = $("#f-venue").value.trim();
     p.summary = $("#f-summary").value.trim();
     p.tags = $("#f-tags").value.split(",").map((s) => s.trim()).filter(Boolean);
-    // 내부 정보 (공개 사이트 비노출) — 값이 하나라도 있으면 저장, 전부 비면 제거
-    // 계약금액은 천원 단위로 입력받아 억원(= 천원 / 100,000)으로 저장 (기존 데이터·실적리스트와 동일 단위)
-    const amountK = parseK($("#f-amount").value);
-    const internal = {
-      amount: amountK == null ? null : Math.round(amountK) / 100000,
-      dept: $("#f-dept").value.trim(),
-      type: $("#f-ptype").value.trim(),
-      note: $("#f-note").value.trim(),
-    };
-    if (internal.amount !== null || internal.dept || internal.type || internal.note) p.internal = internal;
-    else delete p.internal;
+    // 계약금액 — 천원 단위 그대로 저장 (공개 필드). 비우면 필드 제거. 옛 internal 구조는 사용하지 않음
+    const k = parseK($("#f-amount").value);
+    if (k != null && k > 0) p.amount = k;
+    else delete p.amount;
+    delete p.internal;
     p.hidden = $("#f-hidden").checked;
     p.stats = p.stats.filter((s) => s.label || s.value);
     p.scope = p.scope.map((s) => s.trim()).filter(Boolean);

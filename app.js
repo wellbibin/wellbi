@@ -33,10 +33,8 @@ let dataLoading = true;
 async function loadData() {
   try {
     await Store.init();
-    // 공개 사이트: 비공개 프로젝트 제외, 내부 정보(계약금액 등) 필드 제거
-    DATA = (await Store.getProjects())
-      .filter((p) => !p.hidden)
-      .map(({ internal, ...rest }) => rest);
+    // 공개 사이트: 비공개 프로젝트 제외 (계약금액 amount 는 공개 필드 — 상세 화면에 천원 단위로 표시)
+    DATA = (await Store.getProjects()).filter((p) => !p.hidden);
     if (typeof CONFIG !== "undefined" && CONFIG.DRIVE_ENABLED) {
       try {
         localStorage.setItem(DATA_CACHE_KEY, JSON.stringify(DATA));
@@ -383,6 +381,7 @@ function viewProject(id) {
         <p class="hero-summary">${esc(p.summary)}</p>
         <dl class="kv">
           <dt>발주처</dt><dd>${esc(p.client)}</dd>
+          ${p.amount != null ? `<dt>계약금액</dt><dd class="amount">${fmtAmountK(p.amount)}</dd>` : ""}
           <dt>기간</dt><dd>${esc(p.period)}</dd>
           <dt>장소</dt><dd>${esc(p.venue)}</dd>
         </dl>

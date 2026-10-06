@@ -30,7 +30,7 @@
        members.json                       ← 관리자 콘솔 접근 허용 목록
        <연도>/<분야>/<프로젝트명>/
           project.json                    ← 프로젝트 메타 원본
-          제안서/ 정량서류/ 결과보고서/ 대표사진/ 영상/ 기념품/ 공연/ 디자인·시안/ 기타/ _thumb/
+          제안서/ 정량서류/ 결과보고서/ 실적증명서/ 대표사진/ 영상/ 기념품/ 공연/ 디자인·시안/ 기타/ _thumb/
 
    자료 키 형식
      drive:img:<fileId>   이미지 (lh3 CDN 으로 표시, 공개 공유 필요)
@@ -75,6 +75,23 @@ async function resizeImage(file, max, quality = 0.86) {
   return new Promise((res) => c.toBlob(res, "image/jpeg", quality));
 }
 const sortProjects = (list) => list.sort((a, b) => b.year - a.year || a.title.localeCompare(b.title, "ko"));
+
+// 계약금액 마이그레이션: 예전 구조 internal.amount(억원/원 혼재) → amount(천원, 공개 필드).
+// 읽을 때마다 적용되므로 Drive 의 옛 project.json 도 그대로 보이고, 다음 저장 시 새 구조로 기록된다.
+function migrateProject(p) {
+  if (!p || typeof p !== "object") return p;
+  if (p.amount != null && p.amount !== "") {
+    // 새 구조: 천원 그대로 (문자열로 들어와도 숫자로)
+    const n = Number(String(p.amount).replace(/[^\d.]/g, ""));
+    p.amount = isFinite(n) && n > 0 ? Math.round(n) : null;
+  } else if (p.internal && p.internal.amount != null && p.internal.amount !== "") {
+    // 옛 구조: 억원/원 혼재 → 천원 추정 변환
+    p.amount = typeof legacyAmountToK === "function" ? legacyAmountToK(p.internal.amount) : null;
+  }
+  if (p.amount == null) delete p.amount;
+  delete p.internal;
+  return p;
+}
 const fileKind = (file) => (file.type.startsWith("image/") ? "image" : file.type === "application/pdf" ? "pdf" : file.type.startsWith("video/") ? "video" : "link");
 
 /* =====================================================================
@@ -123,9 +140,10 @@ const LocalStore = (() => {
   }
 
   async function getProjects() {
-    return sortProjects(await getAll("projects"));
+    return sortProjects((await getAll("projects")).map(migrateProject));
   }
   async function saveProject(p) {
+    migrateProject(p);
     p.updatedAt = Date.now();
     if (!p.createdAt) p.createdAt = p.updatedAt;
     await put("projects", p);
@@ -236,7 +254,7 @@ const LocalStore = (() => {
   async function importJSON(text) {
     const data = JSON.parse(text);
     const list = Array.isArray(data) ? data : data.projects;
-    for (const p of list) await put("projects", p);
+    for (const p of list) await put("projects", migrateProject(p));
     return list.length;
   }
   // 프로토타입 전용: data.js 샘플을 다시 불러옴 (업로드 파일·구성원은 유지, 샘플 id 와 같은 프로젝트만 덮어씀)
@@ -465,7 +483,7 @@ const DriveStore = (() => {
   }
   async function getProjects() {
     const idx = await loadIndex();
-    return sortProjects(idx.projects.map((p) => JSON.parse(JSON.stringify(p))));
+    return sortProjects(idx.projects.map((p) => migrateProject(JSON.parse(JSON.stringify(p)))));
   }
 
   const fieldLabelOf = (id) => (typeof FIELDS !== "undefined" && FIELDS.find((f) => f.id === id)?.label) || id;
@@ -500,6 +518,7 @@ const DriveStore = (() => {
   }
 
   async function saveProject(p) {
+    migrateProject(p);
     p.updatedAt = Date.now();
     if (!p.createdAt) p.createdAt = p.updatedAt;
     const folderId = await ensureProjectFolder(p);
@@ -705,6 +724,7 @@ const DriveStore = (() => {
       const p = prev
         ? { ...prev, ...raw, assets: prev.assets?.length ? prev.assets : raw.assets || [], thumbnail: prev.thumbnail || raw.thumbnail || "", driveFolderId: prev.driveFolderId, createdAt: prev.createdAt || raw.createdAt }
         : { ...raw };
+      migrateProject(p);
       p.updatedAt = Date.now();
       if (!p.createdAt) p.createdAt = p.updatedAt;
       const folderId = await ensureProjectFolder(p);
