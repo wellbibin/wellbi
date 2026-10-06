@@ -691,10 +691,29 @@ const DriveStore = (() => {
   async function exportJSON() {
     return JSON.stringify({ exportedAt: new Date().toISOString(), mode: "drive", projects: await getProjects() }, null, 2);
   }
-  async function importJSON(text) {
+  // 대량 가져오기: 프로젝트마다 폴더 + project.json 생성, index.json 은 마지막에 한 번만 기록
+  //   - 같은 id 가 이미 있으면 덮어씀(기존 assets·thumbnail·driveFolderId 는 보존)
+  //   - onProgress(done, total, title)
+  async function importJSON(text, { onProgress } = {}) {
     const data = JSON.parse(text);
     const list = Array.isArray(data) ? data : data.projects;
-    for (const p of list) await saveProject(p);
+    const idx = await loadIndex({ force: true });
+    const byId = new Map(idx.projects.map((p) => [p.id, p]));
+    let done = 0;
+    for (const raw of list) {
+      const prev = byId.get(raw.id);
+      const p = prev
+        ? { ...prev, ...raw, assets: prev.assets?.length ? prev.assets : raw.assets || [], thumbnail: prev.thumbnail || raw.thumbnail || "", driveFolderId: prev.driveFolderId, createdAt: prev.createdAt || raw.createdAt }
+        : { ...raw };
+      p.updatedAt = Date.now();
+      if (!p.createdAt) p.createdAt = p.updatedAt;
+      const folderId = await ensureProjectFolder(p);
+      await writeJson(folderId, "project.json", p);
+      byId.set(p.id, p);
+      done++;
+      onProgress?.(done, list.length, p.title);
+    }
+    await saveIndex([...byId.values()]);
     return list.length;
   }
 

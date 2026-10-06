@@ -309,7 +309,7 @@ async function viewProjects() {
       <select id="ff"><option value="">전체 분야</option>${FIELDS.map((f) => `<option value="${f.id}">${esc(f.label)}</option>`).join("")}</select>
     </div>
     <div class="card" style="padding:0 6px"><table class="table">
-      <thead><tr><th></th><th>프로젝트</th><th>연도</th><th>분야</th><th>자료</th><th>진행률</th><th>상태</th><th></th></tr></thead>
+      <thead><tr><th></th><th>프로젝트</th><th>연도</th><th>분야</th><th>계약금액</th><th>자료</th><th>진행률</th><th>상태</th><th></th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>`;
 
@@ -328,6 +328,7 @@ async function viewProjects() {
             <td><div class="t">${esc(p.title)}</div><div class="s">${esc(p.client || "")} · ${esc(p.period || "")}</div></td>
             <td>${p.year}</td>
             <td><span class="pill">${esc(fieldLabel(p.field))}</span></td>
+            <td class="s">${p.internal?.amount != null ? p.internal.amount.toLocaleString("ko-KR", { maximumFractionDigits: 2 }) + "억" : "-"}</td>
             <td>${(p.assets || []).filter((a) => a.section !== "log").length}건${pr.logs.length ? `<div class="s">기록 ${pr.logs.length}</div>` : ""}</td>
             <td><div class="pct ${pctClass(pr.pct)}" title="미등록: ${pr.missing.map((k) => catById(k).label).join(", ") || "없음"}"><div class="bar"><i class="${pctClass(pr.pct)}" style="width:${pr.pct}%"></i></div><b>${pr.pct}%</b></div></td>
             <td><span class="pill ${p.hidden ? "off" : "on"}">${p.hidden ? "비공개" : "공개"}</span></td>
@@ -339,7 +340,7 @@ async function viewProjects() {
           </tr>`;
           })
           .join("")
-      : `<tr><td colspan="8" class="empty-sm">조건에 맞는 프로젝트가 없습니다.</td></tr>`;
+      : `<tr><td colspan="9" class="empty-sm">조건에 맞는 프로젝트가 없습니다.</td></tr>`;
     hydrateImgs($("#rows"));
     $$("[data-del]").forEach((b) =>
       b.addEventListener("click", async () => {
@@ -422,6 +423,16 @@ async function viewEdit(id) {
             <label class="f" style="grid-column:1/-1"><span>장소</span><input id="f-venue" value="${esc(p.venue)}" placeholder="예) 코엑스 오디토리움 (서울)"></label>
             <label class="f" style="grid-column:1/-1"><span>프로젝트 개요 <span class="hint">(영업용 요약 2~3문장)</span></span><textarea id="f-summary">${esc(p.summary)}</textarea></label>
             <label class="f" style="grid-column:1/-1"><span>태그 <span class="hint">(쉼표로 구분)</span></span><input id="f-tags" value="${esc((p.tags || []).join(", "))}" placeholder="하이브리드, 국제포럼, 갈라디너"></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>내부 정보 <small>관리자 콘솔에서만 보이며 공개 사이트에는 표시되지 않습니다</small></h2>
+          <div class="row c3">
+            <label class="f"><span>계약금액 <span class="hint">(억원, VAT포함)</span></span><input id="f-amount" type="number" step="0.0001" min="0" value="${p.internal?.amount ?? ""}" placeholder="예) 1.362"></label>
+            <label class="f"><span>담당부서</span><input id="f-dept" value="${esc(p.internal?.dept || "")}" placeholder="예) 기획본부 (기획2팀)"></label>
+            <label class="f"><span>유형 <span class="hint">(실적리스트 기준)</span></span><input id="f-ptype" value="${esc(p.internal?.type || "")}" placeholder="예) 행사 / 마케팅·홍보"></label>
+            <label class="f" style="grid-column:1/-1"><span>비고</span><input id="f-note" value="${esc(p.internal?.note || "")}" placeholder="예) 나라장터 발급가능 / 피엔비 수행"></label>
           </div>
         </div>
 
@@ -565,6 +576,16 @@ async function viewEdit(id) {
     p.venue = $("#f-venue").value.trim();
     p.summary = $("#f-summary").value.trim();
     p.tags = $("#f-tags").value.split(",").map((s) => s.trim()).filter(Boolean);
+    // 내부 정보 (공개 사이트 비노출) — 값이 하나라도 있으면 저장, 전부 비면 제거
+    const amountRaw = $("#f-amount").value.trim();
+    const internal = {
+      amount: amountRaw === "" ? null : Number(amountRaw),
+      dept: $("#f-dept").value.trim(),
+      type: $("#f-ptype").value.trim(),
+      note: $("#f-note").value.trim(),
+    };
+    if (internal.amount !== null || internal.dept || internal.type || internal.note) p.internal = internal;
+    else delete p.internal;
     p.hidden = $("#f-hidden").checked;
     p.stats = p.stats.filter((s) => s.label || s.value);
     p.scope = p.scope.map((s) => s.trim()).filter(Boolean);
@@ -1044,11 +1065,23 @@ async function viewSettings() {
   $("#imp").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     if (!f) return;
+    const label = e.target.closest("label");
+    const orig = label.firstChild.textContent;
+    label.classList.add("disabled");
     try {
-      const n = await Store.importJSON(await f.text());
+      const n = await Store.importJSON(await f.text(), {
+        onProgress: (done, total, title) => {
+          label.firstChild.textContent = `가져오는 중… ${done}/${total}`;
+        },
+      });
       toast(`${n}개 프로젝트를 가져왔습니다`);
+      setTimeout(() => location.reload(), 800);
     } catch (err) {
       toast("가져오기 실패: " + err.message, "err");
+    } finally {
+      label.firstChild.textContent = orig;
+      label.classList.remove("disabled");
+      e.target.value = "";
     }
   });
 }

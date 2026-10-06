@@ -22,6 +22,8 @@ const FIELDS = [
   { id: "corporate",  label: "기업행사·시상식" },
   { id: "incentive",  label: "인센티브·투어" },
   { id: "public",     label: "공공·기념식" },
+  { id: "marketing",  label: "마케팅·홍보" },
+  { id: "brand",      label: "브랜드·디자인" },
 ];
 
 const CATEGORIES = [

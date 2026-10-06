@@ -33,7 +33,10 @@ let dataLoading = true;
 async function loadData() {
   try {
     await Store.init();
-    DATA = (await Store.getProjects()).filter((p) => !p.hidden);
+    // 공개 사이트: 비공개 프로젝트 제외, 내부 정보(계약금액 등) 필드 제거
+    DATA = (await Store.getProjects())
+      .filter((p) => !p.hidden)
+      .map(({ internal, ...rest }) => rest);
     if (typeof CONFIG !== "undefined" && CONFIG.DRIVE_ENABLED) {
       try {
         localStorage.setItem(DATA_CACHE_KEY, JSON.stringify(DATA));
